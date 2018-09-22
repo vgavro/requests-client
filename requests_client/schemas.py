@@ -1,4 +1,8 @@
+import copy
+
 import marshmallow as ma
+from marshmallow.base import FieldABC
+from marshmallow.schema import _get_fields_by_mro
 from marshmallow.utils import EXCLUDE
 
 from .models import ClientEntity
@@ -11,6 +15,14 @@ class ResponseSchema(ma.Schema):
     def __init__(self, **kwargs):
         if 'unknown' not in kwargs:
             kwargs['unknown'] = EXCLUDE
+
+        if hasattr(self.Meta, 'model'):
+            # Rebind fields from model, if any
+            model_fields = _get_fields_by_mro(self.Meta.model, FieldABC)
+            if model_fields:
+                self._declared_fields = copy.deepcopy(self._declared_fields)
+                self._declared_fields.update(model_fields)
+
         super().__init__(**kwargs)
 
     @ma.pre_load()
@@ -30,7 +42,7 @@ class ResponseSchema(ma.Schema):
 
     def create_model(self, data):
         rv = self.Meta.model(**data)
-        if isinstance(self.Meta.model, ClientEntity):
+        if issubclass(self.Meta.model, ClientEntity):
             rv._client = self.context['client']
         return rv
 

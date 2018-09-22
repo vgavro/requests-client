@@ -74,12 +74,16 @@ class SlottedEntity(Entity):
 
 
 class ClientEntity(Entity):
-    def __init__(self, *args, client=None, **kwargs):
+    def __init__(self, client=None, **kwargs):
         self._client = client
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
 
     @property
     def client(self):
         if not getattr(self, '_client', None):
             raise RuntimeError('Entity %s is not binded to client', self.__class__)
         return self._client
+
+    @client.setter
+    def client(self, client):
+        self._client = client

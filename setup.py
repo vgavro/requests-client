@@ -6,7 +6,7 @@ requires = [
     # TODO: migrate to >=3.0.0b8
     # see https://github.com/marshmallow-code/marshmallow/blob/dev/CHANGELOG.rst
     # for backward incompatible changes
-    'marshmallow>=3.0.0b12',
+    'marshmallow>=3.0.0b16',
 
     # development
     'ipython',
@@ -27,8 +27,8 @@ requires = [
 setup(
     name='requests-client',
     version='0.0.1',
-    description='http://gitlab.com/vgavro/instagram_client',
-    long_description='http://gitlab.com/vgavro/instagram_client',
+    description='http://github.com/vgavro/requests-client',
+    long_description='http://github.com/vgavro/requests-client',
     license='BSD',
     classifiers=[
         'Environment :: Web Environment',
@@ -40,7 +40,7 @@ setup(
     ],
     author='Victor Gavro',
     author_email='vgavro@gmail.com',
-    url='http://github.com/vgavro/instagram_client',
+    url='http://github.com/vgavro/requests-client',
     keywords='',
     packages=find_packages(),
     install_requires=requires,
