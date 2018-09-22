@@ -4,12 +4,13 @@ from urllib.parse import urlparse
 
 from requests import Session, Response
 from marshmallow import ValidationError
+import colorama
 
 from .storage import FileStorage
-from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, utcnow
+from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, utcnow, pprint
 from .schemas import maybe_create_response_schema
-from .exceptions import (Retry, RetryExceeded, ClientError, HTTPError,
-    RatelimitError, TemporaryError, AuthRequired, ResponseValidationError)
+from . import exceptions
+from .exceptions import Retry, ClientError, RatelimitError, TemporaryError, AuthRequired
 
 try:
     from gevent import sleep
@@ -20,12 +21,43 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class BaseClient:
+JSON_CONTENT_TYPES = ['application/json', 'application/hal+json']
+
+
+def check_http_status(status, expected):
+    if isinstance(expected, (tuple, list)):
+        return any(check_http_status(status, status_) for status_ in expected)
+    if not isinstance(expected, int):
+        raise ValueError('Wrong expected http status: %s' % expected)
+    if expected < 10:
+        # 2 means any 2xx status code
+        return 0 <= status - (expected * 100) < 100
+    return status == expected
+
+
+def _color_em(text, style=colorama.Style.BRIGHT, fore=colorama.Fore.WHITE, back=colorama.Back.BLUE):
+    return colorama.Style.RESET_ALL + style + fore + back + text + colorama.Style.RESET_ALL
+
+
+class BaseClientMeta(type):
+    def __new__(metacls, cls, bases, classdict):
+        client_cls = super().__new__(metacls, cls, bases, classdict)
+
+        for name, exc_cls in exceptions.__dict__.items():
+            if isinstance(exc_cls, type) and issubclass(exc_cls, ClientError):
+                setattr(client_cls, name, type(name, (client_cls.ClientErrorMixin, exc_cls), {}))
+        return client_cls
+
+
+class BaseClient(metaclass=BaseClientMeta):
     """
-    Abstract class for instagram client (such as web, android and api).
+    Abstract class for requests client.
     """
 
-    BASE_URL = None  # Set this constant in childs
+    class ClientErrorMixin:
+        pass
+
+    base_url = None  # Set this constant in childs
     allow_redirects = False
     auth_ident = None
 
@@ -142,8 +174,7 @@ class BaseClient:
         for key, value in state.items():
             setattr(self, key, value)
 
-        # TODO backward compability, remove it later
-        if 'is_authenticated' not in state:
+        if 'is_authenticated' not in state and not getattr(self, 'is_authenticated'):
             self.is_authenticated = True
 
         self.logger.debug('State loaded: %s auth=%s', self.auth_repr,
@@ -151,7 +182,8 @@ class BaseClient:
         return True
 
     def init_state(self):
-        self.is_authenticated = False  # TODO Do we need it here?
+        if getattr(self, 'is_authenticated', None) is not False:
+            self.is_authenticated = False  # TODO Do we need it here?
 
     def get_state(self):
         return {key: getattr(self, key) for key in self._state_attributes}
@@ -169,16 +201,21 @@ class BaseClient:
     def authenticate(self):
         raise NotImplementedError()
 
-    def _set_authenticated(self, auth_ident, mode_name, data=None):
-        self.auth_ident = auth_ident
-        self.is_authenticated = True
-        self.logger.info('Authenticated %s %s: %s', auth_ident, mode_name, data)
+    def _set_authenticated(self, auth_ident=None, mode_name='default', data=None):
+        if auth_ident:
+            self.auth_ident = auth_ident
+        if not self.is_authenticated:
+            self.is_authenticated = True
+        self.logger.info('Authenticated %s %s: %s', self.auth_ident, mode_name, data or {})
         if self.state_storage:
             self.save_state()
 
     def auth_required_processor(self, exc):
         # returns True if auth problem resolved, False otherwise
-        raise NotImplementedError()
+        # By default we're just reauthenticating,
+        # if there will be error it will raised upfront
+        self.authenticate()
+        return self.is_authenticated
 
     def error_processor(self, exc, error_processors=[]):
         [p(exc) for p in error_processors]
@@ -198,8 +235,7 @@ class BaseClient:
 
         with self.session.get(url, stream=True) as resp:
             if resp.status_code != 200:
-                msg = '{} {} (!={})'.format(resp.status_code, resp.reason, 200)
-                raise HTTPError(resp, msg, 200)
+                raise self.HTTPError(resp, None, 200)
             with open(output_path, 'wb') as fh:
                 for chunk in resp.iter_content(chunk_size=chunk_size):
                     if chunk:  # filter out keep-alive new chunks
@@ -233,7 +269,7 @@ class BaseClient:
                         self.sleep(exc.wait_seconds,
                             log_reason='retry request: {}'.format(exc.retry_ident))
                 else:
-                    raise RetryExceeded(exc.result,
+                    raise self.RetryExceeded(exc.result,
                         retry_ident=exc.retry_ident, retry_count=exc.retry_count)
 
             except RatelimitError as exc:
@@ -247,7 +283,7 @@ class BaseClient:
                                log_reason='ratelimit wait')
                 else:
                     if ratelimit_retries - 1:
-                        raise RetryExceeded(exc, retry_count=ratelimit_retries - 1)
+                        raise self.RetryExceeded(exc, retry_count=ratelimit_retries - 1)
                     raise
 
             except TemporaryError as exc:
@@ -261,7 +297,7 @@ class BaseClient:
                                log_reason='temporary error wait')
                 else:
                     if temporary_error_retries - 1:
-                        raise RetryExceeded(exc, retry_count=temporary_error_retries - 1)
+                        raise self.RetryExceeded(exc, retry_count=temporary_error_retries - 1)
                     raise
 
     def _request(self, *args, **kwargs):
@@ -272,7 +308,7 @@ class BaseClient:
         raise NotImplementedError()
 
     def _send_request(self, method, url, params=None, data=None, headers=None, json=None,
-                      check_http_status=200, parse_json=False, error_processors=[],
+                      http_status=2, parse_json=False, error_processors=[],
                       allow_redirects=None):
         """
         Real request sending. Sleeping some time if need,
@@ -293,13 +329,18 @@ class BaseClient:
 
         base_url = ''
         if not urlparse(url).scheme:
-            base_url = self.BASE_URL or ''
+            base_url = self.base_url or ''
         if allow_redirects is None:
             allow_redirects = self.allow_redirects
 
         if self.debug_level >= 5:
-            self.logger.debug('REQUEST %s %s %s %s: %s', method, base_url + url,
-                              params, headers, data or json)
+            self.logger.debug(
+                _color_em('REQUEST %s' % method) + ' ' + base_url + url + (' params=%s' % params) +
+                '\n' + _color_em('REQUEST HEADERS:', back=colorama.Back.BLUE) + '\n' +
+                pprint(headers, print_=False) +
+                (('\n' + _color_em('REQUEST BODY:', back=colorama.Back.BLUE) + '\n' +
+                pprint(data or json, print_=False)) if (data or json) else '')
+            )
 
         try:
             kwargs = dict(params=params, data=data, json=json, headers=headers,
@@ -317,8 +358,15 @@ class BaseClient:
                 self.last_call_time = utcnow()
 
         if self.debug_level >= 5:
-            self.logger.debug('RESPONSE %s %s %s: %s', response.request.method,
-                              response.status_code, response.url, response.content)
+            self.logger.debug(
+                _color_em('RESPONSE %s' % response.request.method, back=colorama.Back.GREEN) +
+                colorama.Style.RESET_ALL + colorama.Style.BRIGHT + (' %s ' % response.status_code) +
+                colorama.Style.RESET_ALL + response.url +
+                '\n' + _color_em('RESPONSE HEADERS:', back=colorama.Back.GREEN) + '\n' +
+                pprint(response.headers, print_=False) +
+                '\n' + _color_em('RESPONSE BODY:', back=colorama.Back.GREEN) + '\n' +
+                pprint(response.text, print_=False)
+            )
 
         elapsed_seconds = response.elapsed.total_seconds()
         if elapsed_seconds > self.request_warn_elapsed_seconds:
@@ -330,30 +378,18 @@ class BaseClient:
         self.calls_count += 1
         self.last_response = response  # NOTE: only for debug purposes!
 
-        # NOTE: HTTP status check must always be at the end of function, because
-        # on some statuses we may want to use response anyway
-        if (check_http_status and not (response.status_code == check_http_status
-                                       if isinstance(check_http_status, int)
-                                       else response.status_code in check_http_status)):
-            if parse_json or response.headers.get('Content-Type') == 'application/json':
-                try:
-                    response.data = maybe_attr_dict(response.json())
-                except Exception:
-                    pass
-            msg = '{} {} (!={})'.format(response.status_code, response.reason,
-                                        check_http_status)
-
-            exc = HTTPError(response, msg, check_http_status)
+        if (http_status and not check_http_status(response.status_code, http_status)):
+            self.set_response_json_data(response, parse_json, raise_=False)
+            exc = self.HTTPError(response, expected_status=http_status)
             self.error_processor(exc, error_processors)
             raise exc
 
-        if parse_json or response.headers.get('Content-Type') == 'application/json':
-            try:
-                response.data = maybe_attr_dict(response.json())
-            except Exception as exc:
-                exc = ClientError(response, 'JSON decode error: {}'.format(repr(exc)), exc)
-                self.error_processor(exc, error_processors)
-                raise exc
+        try:
+            self.set_response_json_data(response, parse_json, raise_=True)
+        except Exception as exc:
+            exc = self.ClientError(response, 'JSON error: {}'.format(repr(exc)), exc)
+            self.error_processor(exc, error_processors)
+            raise exc
 
         return response
 
@@ -363,33 +399,47 @@ class BaseClient:
     def post(self, *args, **kwargs):
         return self.request('POST', *args, **kwargs)
 
-    def apply_response_schema(self, response, schema, inherit=None, data_attr='data',
-                              data_path=None, **kwargs):
-        data = getattr(response, data_attr)
+    def set_response_json_data(self, resp, data_path=None, data_attr='data', raise_=False):
+        if (
+            data_path or
+            resp.headers.get('Content-Type', '').lower().split(';')[0] in JSON_CONTENT_TYPES
+        ):
+            try:
+                data = maybe_attr_dict(resp.json())
+                setattr(resp, data_attr, data)
+                if isinstance(data_path, str):
+                    try:
+                        data = resolve_obj_path(data, data_path)
+                        setattr(resp, data_attr, data)
+                    except Exception as exc:
+                        raise self.ClientError(resp, 'Could not resolve path %s: %r' %
+                                               (data_path, exc))
+            except Exception:
+                if raise_:
+                    raise
+
+    def apply_response_schema(self, resp, schema, inherit=None, data_attr='data',
+                              data_path=None, target_attr='data', **kwargs):
+        data = getattr(resp, data_attr)
+        data_path = data_path or getattr(schema, 'data_path', None)
+
         if data_path:
             try:
                 data = resolve_obj_path(data, data_path)
-            except ValueError as exc:
-                msg = ('Could not resolve "{}" '
-                       'on data object: {}'.format(data_path, repr(exc)))
-                raise ClientError(response, msg)
+            except Exception as exc:
+                raise self.ClientError(resp, 'Could not resolve path %s: %r' % (data_path, exc))
 
         schema = maybe_create_response_schema(schema, inherit)
-        # NOTE: creating schema on each response, instead of creating it
-        # once (with decorator, for example), because we need to pass context, which
-        # may be not thread-local in greenlet environment (or in any)?
-        # Maybe this should be tested?
+        schema.context['client'] = self
         schema.context['debug_level'] = self.debug_level
         schema.context['logger'] = self.logger
-        schema.context['response'] = response
+        schema.context['response'] = resp
 
         try:
-            response.data = schema.load(data, **kwargs)
+            setattr(resp, target_attr, schema.load(data, **kwargs))
         except ValidationError as exc:
-            response.data_errors = exc.messages
-            raise ResponseValidationError(response, None, schema)
-
-        return response
+            setattr(resp, '{}_errors'.format(target_attr), exc.messages)
+            raise self.ResponseValidationError(resp, schema=schema, errors=exc.messages)
 
     @classmethod
     def storage_factory(cls, prefix, storage_cls=None, storage_uri=None):
@@ -428,29 +478,35 @@ def response_schema(schema, inherit=None, data_attr='data', data_path=None, **sc
     def decorator(func):
         @wraps(func)
         def wrapper(client, *args, **kwargs):
-            response = func(client, *args, **kwargs)
-            if isinstance(response, Response):
-                return client.apply_response_schema(response, schema, inherit,
-                                                    data_attr, data_path, **schema_kwargs)
-            else:
-                return response
+            resp = func(client, *args, **kwargs)
+            if isinstance(resp, Response):
+                client.apply_response_schema(resp, schema, inherit,
+                                             data_attr, data_path, **schema_kwargs)
+                return resp
+            return resp
         return wrapper
     return decorator
 
 
-def _create_temporary_error_decorator(temporary_error_cls):
-    def error_processor_decorator(exc_cls, exc_attrs={}, callback=None, wait_seconds=None):
-        def error_processor(exc):
-            if isinstance(exc, exc_cls):
-                if (all(resolve_obj_path(exc, attr, suppress_exc=True) == value
-                        for attr, value in exc_attrs.items()) and
-                   (not callback or callback(exc))):
-                    raise temporary_error_cls(exc.resp, 'Temporary error', wait_seconds=wait_seconds,
-                                              original_exc=exc)
+def _match_attrs(obj, attrs):
+    return all(resolve_obj_path(obj, attr, suppress_exc=True) == value
+               for attr, value in attrs.items())
+
+
+def _create_temporary_error_decorator(temporary_error_type):
+    def temporary_error_decorator(exc_cls, exc_attrs={}, callback=None, wait_seconds=None):
+        def create_error_processor(new_exc_cls):
+            def error_processor(exc):
+                if isinstance(exc, exc_cls):
+                    if _match_attrs(exc, exc_attrs) and (not callback or callback(exc)):
+                        raise new_exc_cls(exc.resp, 'Temporary error', wait_seconds=wait_seconds,
+                                          original_exc=exc)
+            return error_processor
 
         def decorator(func):
             @wraps(func)
             def wrapper(client, *args, **kwargs):
+                error_processor = create_error_processor(getattr(client, temporary_error_type))
                 if 'error_processors' in kwargs:
                     kwargs['error_processors'].append(error_processor)
                 else:
@@ -458,11 +514,11 @@ def _create_temporary_error_decorator(temporary_error_cls):
                 return func(client, *args, **kwargs)
             return wrapper
         return decorator
-    return error_processor_decorator
+    return temporary_error_decorator
 
 
-ratelimit_error = _create_temporary_error_decorator(RatelimitError)
-temporary_error = _create_temporary_error_decorator(TemporaryError)
+ratelimit_error = _create_temporary_error_decorator('RatelimitError')
+temporary_error = _create_temporary_error_decorator('TemporaryError')
 
 
 def reraise(exc_cls, exc_attrs, callback):
@@ -472,8 +528,7 @@ def reraise(exc_cls, exc_attrs, callback):
             try:
                 return func(client, *args, **kwargs)
             except exc_cls as exc:
-                if (all(resolve_obj_path(exc, attr, suppress_exc=True) == value
-                        for attr, value in exc_attrs.items())):
+                if _match_attrs(exc, exc_attrs):
                     new_exc = callback(exc, *args, **kwargs)
                     if new_exc:
                         raise new_exc

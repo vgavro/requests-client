@@ -1,12 +1,17 @@
 import marshmallow as ma
 from marshmallow.utils import EXCLUDE
 
+from .models import ClientEntity
 from .utils import maybe_attr_dict, datetime_from_utc_timestamp, pprint
 
 
 class ResponseSchema(ma.Schema):
-    def __init__(self, unknown=EXCLUDE, **kwargs):
-        super().__init__(unknown=unknown, **kwargs)
+    data_path = None
+
+    def __init__(self, **kwargs):
+        if 'unknown' not in kwargs:
+            kwargs['unknown'] = EXCLUDE
+        super().__init__(**kwargs)
 
     @ma.pre_load()
     def __pre_load(self, data):
@@ -23,6 +28,12 @@ class ResponseSchema(ma.Schema):
                 pdb.set_trace()
         return data
 
+    def create_model(self, data):
+        rv = self.Meta.model(**data)
+        if isinstance(self.Meta.model, ClientEntity):
+            rv._client = self.context['client']
+        return rv
+
     @ma.post_load(pass_many=True, pass_original=True)
     def __post_load(self, data, many, original_data):
         if hasattr(self.Meta, 'model'):
@@ -35,9 +46,9 @@ class ResponseSchema(ma.Schema):
                     assert isinstance(original_data, dict)
                     data['_entity'] = original_data
             if many:
-                return tuple(self.Meta.model(**d) for d in data)
+                return tuple(self.create_model(d) for d in data)
             else:
-                return self.Meta.model(**data)
+                return self.create_model(data)
         return maybe_attr_dict(data)
 
 

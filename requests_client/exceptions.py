@@ -16,10 +16,14 @@ class Retry(Exception):
 
 
 class ClientError(Exception):
+    msg = None
+
     def __init__(self, resp, msg=None, *args, **kwargs):
         if isinstance(resp, ClientError):
             resp = resp.resp
-        self.resp, self.msg = resp, msg
+        self.resp = resp
+        if msg:
+            self.msg = msg
         super().__init__(resp, msg, *args, **kwargs)
 
     @property
@@ -77,8 +81,8 @@ class RetryExceeded(ClientError):
         super().__init__(resp, msg, retry_ident, retry_count)
 
     def get_message(self, full=False):
-        msg_ ='Retries({}) on "{}" exceeded'.format(self.retry_count, self.reason)
-        return self.msg and '{}: {}'.format(msg_, self.msg) or msg_
+        msg ='Retries({}) on "{}" exceeded'.format(self.retry_count, self.reason)
+        return self.msg and '{}: {}'.format(msg, self.msg) or msg
 
 
 class HTTPError(ClientError):
@@ -86,6 +90,11 @@ class HTTPError(ClientError):
         self.expected_status = expected_status
         self.status = resp.status_code
         super().__init__(resp, msg, expected_status)
+
+    def get_message(self, full=False):
+        msg = '{} {} (!={})'.format(self.resp.status_code, self.resp.reason,
+                                    self.expected_status)
+        return self.msg and '{}: {}'.format(msg, self.msg) or msg
 
 
 class TemporaryError(ClientError):
@@ -106,12 +115,16 @@ class AuthError(ClientError):
     This is critical to client exceptions.
     Ident is account username.
     """
-    def __init__(self, resp, msg, ident, *args):
+    def __init__(self, resp, msg=None, ident=None, *args, **kwargs):
         self.ident = ident
-        super().__init__(resp, msg, ident, *args)
+        super().__init__(resp, msg, ident, *args, **kwargs)
 
     def get_message(self, full=False):
         return '{}: {}'.format(self.ident, self.msg)
+
+
+class AuthRequired(AuthError):
+    pass
 
 
 class EntityError(ClientError):
@@ -137,9 +150,9 @@ class EntityForbidden(EntityError):
 
 
 class ResponseValidationError(ClientError):
-    def __init__(self, response, msg, schema=None):
-        self.errors = response.data_errors
+    def __init__(self, response, msg=None, schema=None, errors=None):
         self.schema = schema
+        self.errors = errors
         super().__init__(response, msg)
 
     def get_message(self, full=False):

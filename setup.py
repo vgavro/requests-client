@@ -12,12 +12,13 @@ requires = [
     'ipython',
     'parso>=0.1.1',  # turns of verbose debug messages on ipython autocomplete
     'pdbpp',
+    'colorama',
     'coloredlogs',
     'pygments',
 
     # tests
     'requests-mock',
-    'pytest>=3.3',
+    'pytest>=3.8',
     'pytest-cov',
     'pytest-flake8',
     'pytest-variables[yaml]',

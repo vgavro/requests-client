@@ -1,6 +1,27 @@
 import logging
 import json
 from datetime import datetime, date, timezone
+from collections import OrderedDict, Mapping
+from enum import Enum
+
+
+class EnumByNameMixin:
+    # Allows to get Enum mixed by value or by name
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            try:
+                return cls[value]
+            except KeyError:
+                try:
+                    return cls[value.upper()]
+                except KeyError:
+                    pass
+        return super()._missing_(value)
+
+
+class Enum(EnumByNameMixin, Enum):
+    pass
 
 
 class EntityLoggerAdapter(logging.LoggerAdapter):
@@ -97,27 +118,27 @@ def repr_str_short(value, length=32):
 class ReprMixin:
     def __repr__(self, *args, full=False, required=False, **kwargs):
         attrs = self.to_dict(*args, required=required, **kwargs)
-        attrs = ', '.join(u'{}={}'.format(k, repr(v) if full else repr_str_short(repr(v)))
-                          for k, v in attrs.items())
+        attrs = ', '.join(
+            '{}={}'.format(k, repr(v) if full else repr_str_short(repr(v)))
+            for k, v in attrs.items()
+        )
         return '<{}({})>'.format(self.__class__.__name__, attrs)
 
     def to_dict(self, *args, exclude=[], required=True):
-        if not args:
-            args = self.__dict__.keys()
-        return {key: self.__dict__[key] for key in args
-                if not key.startswith('_') and key not in exclude and
-                (required or key in self.__dict__)}
-
-    def _pprint(self, *args, **kwargs):
-        return pprint(self, *args, **kwargs)
+        return {
+            k: self.__dict__[k] for k in (args or self.__dict__.keys())
+            if (not k.startswith('_') and k not in exclude and
+                (args and required or k in self.__dict__))
+        }
 
 
 class SlotsReprMixin(ReprMixin):
     def to_dict(self, *args, exclude=[], required=True):
-        return {k: getattr(self, k) for k in (args or self.__slots__)
-                if not k.startswith('_') and
-                (hasattr(self, k) or (args and required and k in args)) and
-                k not in exclude}
+        return {
+            k: getattr(self, k) for k in (args or self.__slots__)
+            if (not k.startswith('_') and k not in exclude and
+                (args and required or hasattr(self, k)))
+        }
 
 
 def maybe_encode(string, encoding='utf-8'):
@@ -136,7 +157,23 @@ def utcnow():
     return datetime.now(tz=timezone.utc)
 
 
-def pprint(obj, indent=2, colors=True):
+def pprint(obj, indent=2, color=True, print_=True):
+    # TODO: print_=True? really?
+
+    if isinstance(obj, Mapping):
+        # To convert dict-like objects, for example requests.structures.CaseInsensitiveDict
+        obj = OrderedDict(obj)
+    if isinstance(obj, bytes):
+        try:
+            obj = obj.decode('utf-8')
+        except Exception:
+            pass
+    if isinstance(obj, str):
+        try:
+            obj = json.loads(obj)
+        except Exception:
+            pass
+
     def default(obj):
         if isinstance(obj, (datetime, date)):
             return obj.isoformat()
@@ -146,14 +183,25 @@ def pprint(obj, indent=2, colors=True):
 
     rv = json.dumps(obj, default=default, indent=indent, ensure_ascii=False)
 
-    if colors:
+    if color:
         try:
             from pygments import highlight
             from pygments.lexers import JsonLexer
-            from pygments.formatters import TerminalFormatter
+            from pygments.formatters import Terminal256Formatter
+            from pygments.styles.emacs import EmacsStyle
+            from pygments.token import Number
         except ImportError:
             pass
         else:
-            rv = highlight(rv, JsonLexer(), TerminalFormatter())
+            class Style(EmacsStyle):
+                # TODO: this is not the best style, but better than default
+                styles = {
+                    **EmacsStyle.styles.copy(),
+                    Number: 'bold #B88608',
+                }
+            rv = highlight(rv, JsonLexer(), Terminal256Formatter(style=Style))
 
-    print(rv.strip(), end='')
+    if print_:
+        print(rv.strip(), end='')
+    else:
+        return rv.strip()
