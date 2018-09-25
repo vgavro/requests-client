@@ -1,4 +1,10 @@
-from .utils import ReprMixin
+from collections import OrderedDict
+from copy import deepcopy
+
+from marshmallow import Schema
+
+from .utils import ReprMixin, class_or_instance_property
+from .schemas import get_declared_fields
 from .cursor_fetch import (  # noqa backward compatibility
     CursorFetchGenerator, CursorFetchGeneratorError
 )
@@ -18,6 +24,11 @@ def _maybe_to_dict(value):
     if callable(getattr(value, 'to_dict', None)):
         return value.to_dict()
     return value
+
+
+# "_entity" is used for full entity remote data in debug mode
+# to lookup fields not binded from schema
+DEFAULT_SLOTS = ['_entity', '_meta']
 
 
 class Entity(ReprMixin):
@@ -67,23 +78,69 @@ class Entity(ReprMixin):
         }
 
 
-class SlottedEntity(Entity):
-    # "_entity" is used for full entity remote data in debug mode
-    # to lookup fields not binded from schema
-    __slots__ = ['_entity', '_meta']
+class SchemaEntityMeta(type):
+    def __new__(metacls, cls, bases, classdict):
+        new_cls = super().__new__(metacls, cls, bases, classdict)
+
+        if isinstance(new_cls.schema, type):
+            new_cls.schema = deepcopy(new_cls.schema())
+        new_cls.schema = deepcopy(new_cls.schema)
+        new_cls.schema.entity = new_cls  # TODO: weakref
+
+        fields = OrderedDict(get_declared_fields(new_cls))
+        fields.update(new_cls.schema.declared_fields)
+        fields = deepcopy(fields)
+        for field in fields.values():
+            # For some reason it's not rebinded on _add_to_schema if was already binded
+            field.parent = None
+            field.name = None
+
+        new_cls.schema.declared_fields = fields
+        new_cls.schema._update_fields()
+
+        for field in new_cls.schema.fields.values():
+            assert field.parent
+
+        for field_name in new_cls.schema.fields:
+            # For entity.field is None and not 'field' in entity
+            setattr(new_cls, field_name, None)
+
+        # if new_cls.__slots__ is True:
+        #     new_cls.__slots__ = tuple(new_cls.declared_fields)
+        # elif new_cls.__slots__ is False:
+        #     del new_cls.__slots__
+
+        return new_cls
 
 
-class ClientEntity(Entity):
-    def __init__(self, client=None, **kwargs):
-        self._client = client
-        super().__init__(**kwargs)
+class SchemaEntity(Entity, metaclass=SchemaEntityMeta):
+    schema = Schema()
+    # __slots__ = False
 
-    @property
-    def client(self):
-        if not getattr(self, '_client', None):
-            raise RuntimeError('Entity %s is not binded to client', self.__class__)
-        return self._client
+    def dump(self, many=False, **kwargs):
+        assert not many
+        return self.schema.dump(self, **kwargs)
 
-    @client.setter
-    def client(self, client):
-        self._client = client
+    @classmethod
+    def load(cls, data, many=False, **kwargs):
+        if not many:
+            return cls(**cls.schema.load(data, **kwargs))
+        else:
+            return tuple(cls(**item) for item
+                         in cls.schema.load(data, many=many, **kwargs))
+
+    @classmethod
+    def __deepcopy__(cls, memo):
+        rv = deepcopy(cls)
+        rv.schema.entity = rv
+        return rv
+
+
+class ClientEntityMixin:
+    _client = None  # TODO: obviously this should be weakref
+
+    @class_or_instance_property
+    def client(cls_or_self):
+        if not cls_or_self._client:
+            raise RuntimeError('Entity %s is not binded to client' % cls_or_self)
+        return cls_or_self._client

@@ -3,6 +3,7 @@ import json
 from datetime import datetime, date, timezone
 from collections import OrderedDict, Mapping
 from enum import Enum
+from importlib import import_module
 
 
 class EnumByNameMixin:
@@ -22,6 +23,15 @@ class EnumByNameMixin:
 
 class Enum(EnumByNameMixin, Enum):
     pass
+
+
+class class_or_instance_property(object):
+    # https://stackoverflow.com/a/3203659/450103
+    def __init__(self, getter):
+        self.getter = getter
+
+    def __get__(self, instance, owner):
+        return self.getter(instance or owner)
 
 
 class EntityLoggerAdapter(logging.LoggerAdapter):
@@ -155,6 +165,15 @@ def datetime_from_utc_timestamp(timestamp):
 
 def utcnow():
     return datetime.now(tz=timezone.utc)
+
+
+def import_string(import_name):
+    *module_parts, attr = import_name.replace(':', '.').split('.')
+    if not module_parts:
+        raise ImportError('You must specify module and object, separated by ":" or ".", '
+                          'got "{}" instead'.format(import_name))
+    module = import_module('.'.join(module_parts))
+    return getattr(module, attr)
 
 
 def pprint(obj, indent=2, color=True, print_=True):

@@ -2,11 +2,27 @@ import copy
 
 import marshmallow as ma
 from marshmallow.base import FieldABC
-from marshmallow.schema import _get_fields_by_mro
+from marshmallow.schema import _get_fields, _get_fields_by_mro
 from marshmallow.utils import EXCLUDE
 
-from .models import ClientEntity
-from .utils import maybe_attr_dict, datetime_from_utc_timestamp, pprint
+from .utils import maybe_attr_dict, pprint
+
+
+def __obj_fields_iterator(obj):
+    for attr_name in dir(obj):
+        try:
+            attr = getattr(obj, attr_name)
+        except Exception:
+            continue
+        if isinstance(attr, FieldABC):
+            yield attr_name, attr
+
+
+def get_declared_fields(cls, base=FieldABC):
+    return (
+        _get_fields(dict(__obj_fields_iterator(cls)), base) +
+        _get_fields_by_mro(cls, base)
+    )
 
 
 class ResponseSchema(ma.Schema):
@@ -16,9 +32,9 @@ class ResponseSchema(ma.Schema):
         if 'unknown' not in kwargs:
             kwargs['unknown'] = EXCLUDE
 
-        if hasattr(self.Meta, 'model'):
+        if hasattr(self.Meta, 'model') and getattr(self.Meta, 'model_fields', True):
             # Rebind fields from model, if any
-            model_fields = _get_fields_by_mro(self.Meta.model, FieldABC)
+            model_fields = get_declared_fields(self.Meta.model)
             if model_fields:
                 self._declared_fields = copy.deepcopy(self._declared_fields)
                 self._declared_fields.update(model_fields)
@@ -42,7 +58,7 @@ class ResponseSchema(ma.Schema):
 
     def create_model(self, data):
         rv = self.Meta.model(**data)
-        if issubclass(self.Meta.model, ClientEntity):
+        if hasattr(rv, '_client'):
             rv._client = self.context['client']
         return rv
 
@@ -62,20 +78,6 @@ class ResponseSchema(ma.Schema):
             else:
                 return self.create_model(data)
         return maybe_attr_dict(data)
-
-
-class DateTime(ma.fields.DateTime):
-    """
-    Class extends marshmallow standart DateTime with "timestamp" format.
-    """
-
-    DATEFORMAT_SERIALIZATION_FUNCS = \
-        ma.fields.DateTime.DATEFORMAT_SERIALIZATION_FUNCS.copy()
-    DATEFORMAT_DESERIALIZATION_FUNCS = \
-        ma.fields.DateTime.DATEFORMAT_DESERIALIZATION_FUNCS.copy()
-
-    DATEFORMAT_SERIALIZATION_FUNCS['timestamp'] = lambda x: x.timestamp()
-    DATEFORMAT_DESERIALIZATION_FUNCS['timestamp'] = datetime_from_utc_timestamp
 
 
 def maybe_create_response_schema(schema, inherit=None):
