@@ -11,6 +11,8 @@ from .cursor_fetch import (  # noqa backward compatibility
 
 
 def _maybe_deserialize(data, key, model):
+    # TODO: left for compatibility, maybe it should be removed,
+    # but useful for plain Entity (not SchemedEntity)
     if key in data and isinstance(data[key], dict):
         data[key] = model(**data[key])
 
@@ -78,20 +80,31 @@ class Entity(ReprMixin):
         }
 
 
-class SchemaEntityMeta(type):
+class SchemedEntityMeta(type):
     def __new__(metacls, cls, bases, classdict):
+
+        # TODO: allow SchemedEntity to have dynamic slots
+        # based on fields. Note that __slots__ should be defined
+        # before super().__new__
+
+        # if classdict['__slots__'] is True:
+        #     classdict['__slots__'] = tuple(declared_fields)
+        # elif classdict['__slots__'] is False:
+        #     del new_cls.__slots__  # default
+
         new_cls = super().__new__(metacls, cls, bases, classdict)
 
         if isinstance(new_cls.schema, type):
             new_cls.schema = deepcopy(new_cls.schema())
         new_cls.schema = deepcopy(new_cls.schema)
-        new_cls.schema.entity = new_cls  # TODO: weakref
+        new_cls.schema.entity = new_cls  # TODO: weakref?
 
         fields = OrderedDict(get_declared_fields(new_cls))
         fields.update(new_cls.schema.declared_fields)
         fields = deepcopy(fields)
         for field in fields.values():
-            # For some reason it's not rebinded on _add_to_schema if was already binded
+            # For some reason it's not rebinded on _add_to_schema
+            # if was already binded before copy
             field.parent = None
             field.name = None
 
@@ -105,17 +118,16 @@ class SchemaEntityMeta(type):
             # For entity.field is None and not 'field' in entity
             setattr(new_cls, field_name, None)
 
-        # if new_cls.__slots__ is True:
-        #     new_cls.__slots__ = tuple(new_cls.declared_fields)
-        # elif new_cls.__slots__ is False:
-        #     del new_cls.__slots__
-
         return new_cls
 
 
-class SchemaEntity(Entity, metaclass=SchemaEntityMeta):
+class SchemedEntity(Entity, metaclass=SchemedEntityMeta):
     schema = Schema()
     # __slots__ = False
+
+    @property
+    def _fields(self):
+        return self.schema.fields
 
     def dump(self, many=False, **kwargs):
         assert not many
@@ -135,9 +147,13 @@ class SchemaEntity(Entity, metaclass=SchemaEntityMeta):
         rv.schema.entity = rv
         return rv
 
+    def to_dict(self, *args, **kwargs):
+        # TODO: Obviously this should use dump in some way
+        return super().to_dict(*args, **kwargs)
+
 
 class ClientEntityMixin:
-    _client = None  # TODO: obviously this should be weakref
+    _client = None  # TODO: weakref on bind?
 
     @class_or_instance_property
     def client(cls_or_self):

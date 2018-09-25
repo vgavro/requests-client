@@ -28,7 +28,7 @@ class DateTimeField(fields.DateTime):
         return super()._serialize(value, attr, obj)
 
 
-class EntityField(fields.Nested):
+class SchemedEntityField(fields.Nested):
     def __init__(self, entity, **kwargs):
         self.entity = entity
         super().__init__(None, **kwargs)  # Allows lazy model import if entity is string
@@ -61,18 +61,23 @@ class EntityField(fields.Nested):
 
 
 class BindPropertyField(fields.Field):
-    container = None
-    resolver = None
+    container = fields.Raw
+    getter, setter = None, None
 
-    def __init__(self, bind_attr, container=None, resolver=None, bind_target='parent.entity',
-                 **kwargs):
+    def __init__(self, bind_attr, bind_target='parent.entity', container=None,
+                 getter=None, setter=None, **kwargs):
         if container:
             self.container = container
         if isinstance(self.container, type):
             self.container = self.container()
-        if resolver:
-            self.resolver = resolver
-        assert self.container and self.resolver
+        if getter:
+            self.getter = getter
+        if setter:
+            self.setter = setter
+
+        if not self.getter:
+            raise ValueError('getter required')
+
         self.bind_attr = bind_attr
         self.bind_target = bind_target
         super().__init__(**kwargs)
@@ -83,17 +88,23 @@ class BindPropertyField(fields.Field):
     def _serialize(self, value, attr, obj):
         return self.container._serialize(value, attr, obj)
 
-    def resolve(self, value):
-        if not hasattr(self, '_resolved') or value != self._resolved_value:
-            self._resolved = self.resolver(value)
-            self._resolved_value = value
-        return self._resolved
+    def get(self, val):
+        if not hasattr(self, '_get_rv') or val != self._get_val:
+            self._get_rv = self.getter(val)
+            self._get_val = val
+        return self._get_rv
 
     def _add_to_schema(self, field_name, schema):
         super()._add_to_schema(field_name, schema)
 
-        def resolver(instance):
-            return self.resolve(getattr(instance, field_name))
+        def getter(instance):
+            return self.get(getattr(instance, field_name))
 
         target = resolve_obj_path(self, self.bind_target)
-        setattr(target, self.bind_attr, property(resolver))
+        property_ = property(getter)
+        setattr(target, self.bind_attr, property_)
+
+        if self.setter:
+            def setter(instance, val):
+                return setattr(instance, field_name, self.setter(val))
+            setattr(target, self.bind_attr, property_.setter(setter))
