@@ -4,6 +4,16 @@ from marshmallow import fields, ValidationError
 from .utils import datetime_from_utc_timestamp, import_string, resolve_obj_path
 
 
+class NestedField(fields.Nested):
+    # NOTE: Fix to fallback schema load to schema defaults
+    # instead of overriding unknown='raise'.
+    # While not merged https://github.com/marshmallow-code/marshmallow/pull/963
+
+    def __init__(self, nested, **kwargs):
+        kwargs.setdefault('unknown', None)
+        super().__init__(nested, **kwargs)
+
+
 class DateTimeField(fields.DateTime):
     """
     Class extends marshmallow standart DateTime with "timestamp" format.
