@@ -11,6 +11,7 @@ requires = [
     # development
     'ipython',
     'parso>=0.1.1',  # turns of verbose debug messages on ipython autocomplete
+    'click',
     'pdbpp',
     'colorama',
     'coloredlogs',

@@ -6,6 +6,9 @@ from enum import Enum
 from importlib import import_module
 
 
+NO_DEFAULT = object()
+
+
 class EnumByNameMixin:
     # Allows to get Enum mixed by value or by name
     @classmethod
@@ -46,7 +49,7 @@ class EntityLoggerAdapter(logging.LoggerAdapter):
         return '[{}] {}'.format(self.entity, msg), kwargs
 
 
-def _resolve_obj_key(obj, key, suppress_exc):
+def resolve_obj_key(obj, key, default=NO_DEFAULT):
     if key.isdigit():
         try:
             return obj[int(key)]
@@ -54,8 +57,8 @@ def _resolve_obj_key(obj, key, suppress_exc):
             try:
                 return obj[key]
             except Exception as exc:
-                if suppress_exc:
-                    return exc
+                if default is not NO_DEFAULT:
+                    return default
                 raise ValueError('Could not resolve "{}" on {} object: {}'.format(key, obj))
     else:
         try:
@@ -64,19 +67,19 @@ def _resolve_obj_key(obj, key, suppress_exc):
             try:
                 return getattr(obj, key)
             except Exception as exc:
-                if suppress_exc:
-                    return exc
+                if default is not NO_DEFAULT:
+                    return default
                 raise ValueError('Could not resolve "{}" on {} object'.format(key, obj))
 
 
-def resolve_obj_path(obj, path, suppress_exc=False):
+def resolve_obj_path(obj, path, default=NO_DEFAULT):
     dot_pos = path.find('.')
     if dot_pos == -1:
-        return _resolve_obj_key(obj, path, suppress_exc)
+        return resolve_obj_key(obj, path, default)
     else:
         key, path = path[:dot_pos], path[(dot_pos + 1):]
-        return resolve_obj_path(_resolve_obj_key(obj, key, suppress_exc),
-                                path, suppress_exc)
+        return resolve_obj_path(resolve_obj_key(obj, key, default),
+                                path, default)
 
 
 class AttrDict(dict):

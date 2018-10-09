@@ -47,7 +47,7 @@ class Entity(ReprMixin):
             self._meta = {}
         return self._meta
 
-    @property
+    @class_or_instance_property
     def _fields(self):
         if hasattr(self, '__slots__'):
             return self.__slots__
@@ -153,6 +153,7 @@ class SchemedEntity(Entity, metaclass=SchemedEntityMeta):
 
 
 class ClientEntityMixin:
+    # TODO: rename to BindedEntityMixin
     _client = None  # TODO: weakref on bind?
 
     @class_or_instance_property

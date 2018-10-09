@@ -1,11 +1,12 @@
 import logging
 from functools import wraps
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 from requests import Session, Response
 from marshmallow import ValidationError
 import colorama
 
+from .config import CreateFromConfigMixin
 from .storage import FileStorage
 from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, utcnow, pprint
 from .schemas import maybe_create_response_schema
@@ -36,6 +37,8 @@ def check_http_status(status, expected):
 
 
 def _color_em(text, style=colorama.Style.BRIGHT, fore=colorama.Fore.WHITE, back=colorama.Back.BLUE):
+    # TODO: create colors shortcuts module with colorama and remove this helper,
+    # see https://github.com/feluxe/sty/issues/8
     return colorama.Style.RESET_ALL + style + fore + back + text + colorama.Style.RESET_ALL
 
 
@@ -49,7 +52,7 @@ class BaseClientMeta(type):
         return client_cls
 
 
-class BaseClient(metaclass=BaseClientMeta):
+class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
     """
     Abstract class for requests client.
     """
@@ -96,7 +99,7 @@ class BaseClient(metaclass=BaseClientMeta):
 
         if auth_ident:
             self.auth_ident = auth_ident
-        self.debug_level = debug_level or self.debug_level
+        self.debug_level = int(debug_level) if debug_level is not None else self.debug_level
         self.session = isinstance(session, dict) and self.session_cls(**session) or session
 
         # NOTE - it's not best decision to rely on username for logging,
@@ -183,7 +186,11 @@ class BaseClient(metaclass=BaseClientMeta):
 
     def init_state(self):
         if getattr(self, 'is_authenticated', None) is not False:
-            self.is_authenticated = False  # TODO Do we need it here?
+            try:
+                self.is_authenticated = False  # TODO Do we need it here?
+            except AttributeError:
+                # In case it's property without setter
+                pass
 
     def get_state(self):
         return {key: getattr(self, key) for key in self._state_attributes}
@@ -327,15 +334,15 @@ class BaseClient(metaclass=BaseClientMeta):
             self.first_call_time = now
         self.last_call_time = utcnow()
 
-        base_url = ''
-        if not urlparse(url).scheme:
-            base_url = self.base_url or ''
+        if not urlparse(url).scheme and self.base_url:
+            url = urljoin(self.base_url, url)
+
         if allow_redirects is None:
             allow_redirects = self.allow_redirects
 
         if self.debug_level >= 5:
             self.logger.debug(
-                _color_em('REQUEST %s' % method) + ' ' + base_url + url + (' params=%s' % params) +
+                _color_em('REQUEST %s' % method) + ' ' + url + (' params=%s' % params) +
                 '\n' + _color_em('REQUEST HEADERS:', back=colorama.Back.BLUE) + '\n' +
                 pprint(headers, print_=False) +
                 (('\n' + _color_em('REQUEST BODY:', back=colorama.Back.BLUE) + '\n' +
@@ -349,7 +356,7 @@ class BaseClient(metaclass=BaseClientMeta):
             if self.timeout is not None:
                 # Allow session (ConfigurableSession for example) to handle timeout
                 kwargs['timeout'] = self.timeout
-            response = self.session.request(method, base_url + url, **kwargs)
+            response = self.session.request(method, url, **kwargs)
         except Exception as exc:
             self.error_processor(exc, error_processors)
             raise

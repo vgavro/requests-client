@@ -5,10 +5,12 @@ except ImportError:
 
 
 class CursorFetchGeneratorError(Exception):
+    # TODO: rename to CursorFetchError
     pass
 
 
 class CursorFetchGenerator:
+    # TODO: rename to CursorFetchIterator, reverse_iterable should defaults to False
     def __init__(self, cursor=None, has_more=None, fetch_callback=None, reverse_iterable=True,
                  initial=[], max_count=None, max_count_to_stop_fetch=None,
                  max_fetch_count=None, fetch_wait_seconds=0,
@@ -22,7 +24,6 @@ class CursorFetchGenerator:
             self._iterable = list(reversed(initial))
         else:
             self._iterable = list(initial)
-        self.media_ids_last_resp = []
         self.max_count = (max_count is None) and float('inf') or max_count
         self.max_count_to_stop_fetch = ((max_count_to_stop_fetch is None) and
                                         float('inf') or max_count_to_stop_fetch)

@@ -111,10 +111,10 @@ class BindPropertyField(fields.Field):
             return self.get(getattr(instance, field_name))
 
         target = resolve_obj_path(self, self.bind_target)
-        property_ = property(getter)
-        setattr(target, self.bind_attr, property_)
+        prop = property(getter)
+        setattr(target, self.bind_attr, prop)
 
         if self.setter:
             def setter(instance, val):
                 return setattr(instance, field_name, self.setter(val))
-            setattr(target, self.bind_attr, property_.setter(setter))
+            setattr(target, self.bind_attr, prop.setter(setter))
