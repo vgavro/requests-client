@@ -80,6 +80,43 @@ class ResponseSchema(ma.Schema):
         return maybe_attr_dict(data)
 
 
+def _replace_keys(data, pairs):
+    for from_key, to_key in pairs:
+        if from_key in data:
+            data[to_key] = data.pop(from_key)
+    return data
+
+
+class LoadKeySchemaMixin:
+    """
+    Processing field "load_key" extra parameter.
+    Works for fields like "data_key", but for deserialization only.
+    Consider this as bringing back "load_from" parameter, removed since 3.0.0b8
+    """
+    @ma.pre_load(pass_many=True)
+    def __pre_load(self, data, many):
+        pairs = tuple(
+            (field.metadata['load_key'], field.data_key or field_name)
+            for field_name, field in self.fields if 'load_key' in field.metadata
+        )
+        return [_replace_keys(v, pairs) for v in data] if many else _replace_keys(data, pairs)
+
+
+class PostKeySchemaMixin:
+    """
+    Processing field "post_key" extra parameter.
+    Works for fields like "data_key", but for serialization only.
+    Consider this as bringing back "dump_to" parameter, removed since 3.0.0b8
+    """
+    @ma.post_dump(pass_many=True)
+    def __post_dump(self, data, many):
+        pairs = tuple(
+            (field.data_key or field_name, field.metadata['post_key'])
+            for field_name, field in self.fields if 'post_key' in field.metadata
+        )
+        return [_replace_keys(v, pairs) for v in data] if many else _replace_keys(data, pairs)
+
+
 def maybe_create_response_schema(schema, inherit=None):
     inherit = inherit or (ResponseSchema,)
 
@@ -87,5 +124,4 @@ def maybe_create_response_schema(schema, inherit=None):
         return schema()
     elif isinstance(schema, dict):
         return type('_Schema', inherit, schema)()
-    else:
-        return schema
+    return schema
