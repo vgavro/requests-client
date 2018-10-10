@@ -5,6 +5,8 @@ from collections import OrderedDict, Mapping
 from enum import Enum
 from importlib import import_module
 
+from marshmallow import missing
+
 
 NO_DEFAULT = object()
 
@@ -104,7 +106,34 @@ class AttrDict(dict):
 def maybe_attr_dict(data):
     if isinstance(data, dict):
         return AttrDict({k: maybe_attr_dict(v) for k, v in data.items()})
+    elif isinstance(data, (tuple, list, set)):
+        for i, v in enumerate(data):
+            data[i] = maybe_attr_dict(v)
     return data
+
+
+class cached_property(property):
+    # https://github.com/pallets/werkzeug/blob/master/werkzeug/utils.py
+    # Actually we're not using functools.lru_cache because we want to set
+    # cached values outside the function sometime, and lru_cache
+    # not give us easy way to do this.
+    def __init__(self, func, name=None, doc=None):
+        self.__name__ = name or func.__name__
+        self.__module__ = func.__module__
+        self.__doc__ = doc or func.__doc__
+        self.func = func
+
+    def __set__(self, obj, value):
+        obj.__dict__[self.__name__] = value
+
+    def __get__(self, obj, type=None):
+        if obj is None:
+            return self
+        value = obj.__dict__.get(self.__name__, missing)
+        if value is missing:
+            value = self.func(obj)
+            obj.__dict__[self.__name__] = value
+        return value
 
 
 def repr_response(resp, full=False):

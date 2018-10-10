@@ -9,7 +9,8 @@ from requests_client.exceptions import (ClientError, HTTPError, RatelimitError,
 
 
 class Client(BaseClient):
-    base_url = 'mock://test/'
+    # For some reason urljoin not works properly with mock:// schema
+    base_url = 'http://test/'
     auth_ident = None
 
     _request = BaseClient._send_request
@@ -24,11 +25,11 @@ def req_mocker():
 def test_request(req_mocker):
     client = Client()
 
-    req_mocker.get('mock://test/path', text='{"hello": "world"}')
+    req_mocker.get('http://test/path', text='{"hello": "world"}')
     r1 = client.get('path', parse_json=True)
     assert r1.data.hello == 'world'
 
-    req_mocker.post('mock://test/path', text='{"hello": "world"}')
+    req_mocker.post('http://test/path', text='{"hello": "world"}')
     r2 = client.post('path', parse_json=True)
     assert r2.data.hello == 'world'
 
@@ -48,7 +49,7 @@ def test_request(req_mocker):
 def test_json_decode_error(req_mocker):
     client = Client()
 
-    req_mocker.get('mock://test/path', text='unparsable')
+    req_mocker.get('http://test/path', text='unparsable')
     with pytest.raises(ClientError) as exc:
         client.get('path', parse_json=True)
     assert 'JSONDecodeError' in repr(exc.value)
@@ -57,7 +58,7 @@ def test_json_decode_error(req_mocker):
 def test_http_status_error(req_mocker):
     client = Client()
 
-    req_mocker.get('mock://test/path', status_code=400, text='{"hello": "world"}')
+    req_mocker.get('http://test/path', status_code=400, text='{"hello": "world"}')
     with pytest.raises(HTTPError) as exc:
         r = client.get('path', parse_json=True)
     assert exc.value.status == 400
@@ -65,7 +66,7 @@ def test_http_status_error(req_mocker):
     # test json is parsed on response
     assert exc.value.response.data.hello == 'world'
 
-    req_mocker.get('mock://test/path', status_code=200, text='unparsable')
+    req_mocker.get('http://test/path', status_code=200, text='unparsable')
     with pytest.raises(HTTPError) as exc:
         r = client.get('path', parse_json=True, http_status=400)
     assert exc.value.status == 200
@@ -73,10 +74,10 @@ def test_http_status_error(req_mocker):
     assert not hasattr(exc.value.response, 'data')
 
     # Test no exception raised
-    req_mocker.get('mock://test/path', status_code=400, text='{"hello": "world"}')
+    req_mocker.get('http://test/path', status_code=400, text='{"hello": "world"}')
     r = client.get('path', http_status=[200, 400])
     assert r.status_code == 400
-    req_mocker.get('mock://test/path', status_code=200, text='{"hello": "world"}')
+    req_mocker.get('http://test/path', status_code=200, text='{"hello": "world"}')
     r = client.get('path', http_status=[200, 400])
     assert r.status_code == 200
 
@@ -106,26 +107,26 @@ def test_temporary_error(error_type, req_mocker):
     client = _Client(**client_kwargs)
 
     with pytest.raises(HTTPError):  # doesn't match
-        req_mocker.get('mock://test/path', status_code=401)
+        req_mocker.get('http://test/path', status_code=401)
         client.test()
         assert client._sleeped == 0
 
     with pytest.raises(HTTPError):  # doesn't match
-        req_mocker.get('mock://test/path', status_code=400, json={'match1': False})
+        req_mocker.get('http://test/path', status_code=400, json={'match1': False})
         client.test()
         assert client._sleeped == 0
 
     with pytest.raises(RetryExceeded):  # match
-        req_mocker.get('mock://test/path', status_code=400, json={'match1': True})
+        req_mocker.get('http://test/path', status_code=400, json={'match1': True})
         client.test()
         assert client._sleeped == 1
 
     with pytest.raises(RetryExceeded):  # match
-        req_mocker.get('mock://test/path', status_code=400, json={'match2': 'true'})
+        req_mocker.get('http://test/path', status_code=400, json={'match2': 'true'})
         client.test()
         assert client._sleeped == 2
 
     with pytest.raises(RetryExceeded):
-        req_mocker.get('mock://test/path', status_code=400, json={'match3': True})
+        req_mocker.get('http://test/path', status_code=400, json={'match3': True})
         client.test()
         assert client._sleeped == 5

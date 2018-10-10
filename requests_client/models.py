@@ -1,7 +1,7 @@
 from collections import OrderedDict
 from copy import deepcopy
 
-from marshmallow import Schema
+from marshmallow import Schema, missing
 
 from .utils import ReprMixin, class_or_instance_property
 from .schemas import get_declared_fields
@@ -76,7 +76,7 @@ class Entity(ReprMixin):
             k: _maybe_to_dict(getattr(self, k))
             for k in (args or self._fields or self.__dict__.keys())
             if (not k.startswith('_') and k not in exclude and
-                (args and required or hasattr(self, k)))
+                (args and required or getattr(self, k, missing) != missing))
         }
 
 
@@ -95,7 +95,7 @@ class SchemedEntityMeta(type):
         new_cls = super().__new__(metacls, cls, bases, classdict)
 
         if isinstance(new_cls.schema, type):
-            new_cls.schema = deepcopy(new_cls.schema())
+            new_cls.schema = new_cls.schema()
         new_cls.schema = deepcopy(new_cls.schema)
         new_cls.schema.entity = new_cls  # TODO: weakref?
 
@@ -108,15 +108,15 @@ class SchemedEntityMeta(type):
             field.parent = None
             field.name = None
 
+        new_cls._declared_fields = fields
         new_cls.schema.declared_fields = fields
         new_cls.schema._update_fields()
 
-        for field in new_cls.schema.fields.values():
-            assert field.parent
+        assert all(f.parent for f in new_cls.schema.fields.values())
 
         for field_name in new_cls.schema.fields:
-            # For entity.field is None and not 'field' in entity
-            setattr(new_cls, field_name, None)
+            # For entity.field is missing and not 'field' in entity
+            setattr(new_cls, field_name, missing)
 
         return new_cls
 
@@ -124,6 +124,12 @@ class SchemedEntityMeta(type):
 class SchemedEntity(Entity, metaclass=SchemedEntityMeta):
     schema = Schema()
     # __slots__ = False
+
+    def __init__(self, **kwargs):
+        for name, field in self.schema.fields.items():
+            if field.default is not missing:
+                kwargs.setdefault(name, field.default)
+        super().__init__(**kwargs)
 
     @property
     def _fields(self):

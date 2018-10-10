@@ -23,6 +23,7 @@ def main(client_cls=None, config=None, loglevel=1):
 
     client_cls = import_string(client_cls)
     client = client_cls.create_from_config(config)  # noqa
+    from requests_client.utils import pprint  # noqa
     IPython.embed()
 
 

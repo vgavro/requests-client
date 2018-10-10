@@ -8,7 +8,7 @@ import colorama
 
 from .config import CreateFromConfigMixin
 from .storage import FileStorage
-from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, utcnow, pprint
+from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, utcnow, pprint, missing
 from .schemas import maybe_create_response_schema
 from . import exceptions
 from .exceptions import Retry, ClientError, RatelimitError, TemporaryError, AuthRequired
@@ -22,7 +22,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-JSON_CONTENT_TYPES = ['application/json', 'application/hal+json']
+JSON_CONTENT_TYPES = ['text/json', 'application/json', 'application/hal+json']
 
 
 def check_http_status(status, expected):
@@ -496,7 +496,7 @@ def response_schema(schema, inherit=None, data_attr='data', data_path=None, **sc
 
 
 def _match_attrs(obj, attrs):
-    return all(resolve_obj_path(obj, attr, suppress_exc=True) == value
+    return all(resolve_obj_path(obj, attr, default=missing) == value
                for attr, value in attrs.items())
 
 

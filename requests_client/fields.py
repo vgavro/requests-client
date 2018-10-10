@@ -1,13 +1,16 @@
-from marshmallow import fields, ValidationError
-# from marshmallow.utils import is_collection
+from copy import deepcopy
+
+from marshmallow import fields
 
 from .utils import datetime_from_utc_timestamp, import_string, resolve_obj_path
 
 
 class NestedField(fields.Nested):
-    # NOTE: Fix to fallback schema load to schema defaults
-    # instead of overriding unknown='raise'.
-    # While not merged https://github.com/marshmallow-code/marshmallow/pull/963
+    """
+    Fix to fallback schema load to schema defaults
+    instead of overriding unknown='raise'.
+    While not merged https://github.com/marshmallow-code/marshmallow/pull/963
+    """
 
     def __init__(self, nested, **kwargs):
         kwargs.setdefault('unknown', None)
@@ -17,7 +20,10 @@ class NestedField(fields.Nested):
 class DateTimeField(fields.DateTime):
     """
     Class extends marshmallow standart DateTime with "timestamp" format.
+    Note that this is very naive implementation, more robust solution
+    now in progress with marshmallow team.
     """
+    # TODO: add ticket url
 
     DATEFORMAT_SERIALIZATION_FUNCS = \
         fields.DateTime.DATEFORMAT_SERIALIZATION_FUNCS.copy()
@@ -38,7 +44,7 @@ class DateTimeField(fields.DateTime):
         return super()._serialize(value, attr, obj)
 
 
-class SchemedEntityField(fields.Nested):
+class SchemedEntityField(NestedField):
     def __init__(self, entity, **kwargs):
         self.entity = entity
         super().__init__(None, **kwargs)  # Allows lazy model import if entity is string
@@ -47,21 +53,24 @@ class SchemedEntityField(fields.Nested):
     def schema(self):
         if not self.nested:
             self.entity = self.resolve_entity(self.entity)
-            self.nested = self.entity.schema
+
+            # Well, actually in marshmallow this options also has no effect
+            # if schema was already initialized, so it's schma __init__ code below
+            self.nested = deepcopy(self.entity.schema)
+            self.nested.many = self.many
+            self.nested.only = self.only or self.nested.only
+            self.nested.exclude = self.exclude or self.nested.exclude
+            self.nested.many = self.many or self.nested.many
+            self.nested.context = getattr(self.parent, 'context', {})
+            self.nested.load_only = self._nested_normalized_option('load_only')
+            self.nested.dump_only = self._nested_normalized_option('dump_only')
+            self.nested._update_fields(self.many)
         return super().schema
 
     def resolve_entity(self, entity):
         if isinstance(entity, str):
             return import_string(entity)
         return entity
-
-    def _load(self, value, data):
-        # For some reason schema always created in Nested field, and many is passed to __init__
-        # instead of load, so just override it with many=self.many.
-        try:
-            return self.schema.load(value, many=self.many, unknown=self.unknown)
-        except ValidationError as exc:
-            raise ValidationError(exc.messages, data=data, valid_data=exc.valid_data)
 
     def _deserialize(self, value, attr, data):
         data = super()._deserialize(value, attr, data)
@@ -71,6 +80,10 @@ class SchemedEntityField(fields.Nested):
 
 
 class BindPropertyField(fields.Field):
+    """
+    This field binds property on bind_target, which is based on field value.
+    """
+
     container = fields.Raw
     getter, setter = None, None
 
