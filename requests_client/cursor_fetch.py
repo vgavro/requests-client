@@ -18,7 +18,9 @@ class CursorFetchIterator:
         self._has_more = has_more
         self._fetch_callback = fetch_callback
         self.reverse = reverse
-        if reverse:
+        if not reverse:
+            # NOTE: we're storing iterables internally in reversed order
+            # because of iterating using .pop()
             self._iterable = list(reversed(initial))
         else:
             self._iterable = list(initial)
@@ -41,8 +43,7 @@ class CursorFetchIterator:
     def has_more(self):
         if self._has_more is not None:
             return self._has_more
-        if self.fetch_count:
-            return bool(self.cursor)
+        return True if not self.fetch_count else bool(self.cursor)
 
     @has_more.setter
     def has_more(self, value):
@@ -69,7 +70,7 @@ class CursorFetchIterator:
 
         result = self._fetch()
         if result is not None:
-            if self.reverse:
+            if not self.reverse:
                 self._iterable = list(reversed(result))
             else:
                 self._iterable = list(result)
