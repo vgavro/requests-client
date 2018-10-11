@@ -97,22 +97,22 @@ class LoadKeySchemaMixin:
     def __pre_load(self, data, many):
         pairs = tuple(
             (field.metadata['load_key'], field.data_key or field_name)
-            for field_name, field in self.fields if 'load_key' in field.metadata
+            for field_name, field in self.fields.items() if 'load_key' in field.metadata
         )
         return [_replace_keys(v, pairs) for v in data] if many else _replace_keys(data, pairs)
 
 
-class PostKeySchemaMixin:
+class DumpKeySchemaMixin:
     """
-    Processing field "post_key" extra parameter.
+    Processing field "dump_key" extra parameter.
     Works for fields like "data_key", but for serialization only.
     Consider this as bringing back "dump_to" parameter, removed since 3.0.0b8
     """
     @ma.post_dump(pass_many=True)
     def __post_dump(self, data, many):
         pairs = tuple(
-            (field.data_key or field_name, field.metadata['post_key'])
-            for field_name, field in self.fields if 'post_key' in field.metadata
+            (field.data_key or field_name, field.metadata['dump_key'])
+            for field_name, field in self.fields.items() if 'dump_key' in field.metadata
         )
         return [_replace_keys(v, pairs) for v in data] if many else _replace_keys(data, pairs)
 

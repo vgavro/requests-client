@@ -158,8 +158,7 @@ class SchemedEntity(Entity, metaclass=SchemedEntityMeta):
         return super().to_dict(*args, **kwargs)
 
 
-class ClientEntityMixin:
-    # TODO: rename to BindedEntityMixin
+class BindedEntityMixin:
     _client = None  # TODO: weakref on bind?
 
     @class_or_instance_property
