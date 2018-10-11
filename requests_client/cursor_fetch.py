@@ -4,14 +4,12 @@ except ImportError:
     from time import sleep
 
 
-class CursorFetchGeneratorError(Exception):
-    # TODO: rename to CursorFetchError
+class CursorFetchError(Exception):
     pass
 
 
-class CursorFetchGenerator:
-    # TODO: rename to CursorFetchIterator, reverse_iterable should defaults to False
-    def __init__(self, cursor=None, has_more=None, fetch_callback=None, reverse_iterable=True,
+class CursorFetchIterator:
+    def __init__(self, fetch_callback=None, cursor=None, has_more=None, reverse=False,
                  initial=[], max_count=None, max_count_to_stop_fetch=None,
                  max_fetch_count=None, fetch_wait_seconds=0,
                  empty_fetch_retries=0, empty_fetch_wait_seconds=0, logger=None):
@@ -19,8 +17,8 @@ class CursorFetchGenerator:
         self.cursor = cursor
         self._has_more = has_more
         self._fetch_callback = fetch_callback
-        self.reverse_iterable = reverse_iterable
-        if reverse_iterable:
+        self.reverse = reverse
+        if reverse:
             self._iterable = list(reversed(initial))
         else:
             self._iterable = list(initial)
@@ -71,7 +69,7 @@ class CursorFetchGenerator:
 
         result = self._fetch()
         if result is not None:
-            if self.reverse_iterable:
+            if self.reverse:
                 self._iterable = list(reversed(result))
             else:
                 self._iterable = list(result)
@@ -113,9 +111,9 @@ class CursorFetchGenerator:
             else:
                 msg = 'Cursor has more, but empty list returned'
                 if self.empty_fetch_retries:
-                    msg += ('(after {} retries with {} sleep)'
-                            .format(self.empty_fetch_retries, self.empty_fetch_wait_seconds))
-                raise CursorFetchGeneratorError(msg)
+                    msg += ('(after % retries with %s sleep)' %
+                            (self.empty_fetch_retries, self.empty_fetch_wait_seconds))
+                raise CursorFetchError(msg)
 
         if not self._iterable:
             raise StopIteration()

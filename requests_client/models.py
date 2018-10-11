@@ -5,9 +5,6 @@ from marshmallow import Schema, missing
 
 from .utils import ReprMixin, class_or_instance_property
 from .schemas import get_declared_fields
-from .cursor_fetch import (  # noqa backward compatibility
-    CursorFetchGenerator, CursorFetchGeneratorError
-)
 
 
 def _maybe_deserialize(data, key, model):
