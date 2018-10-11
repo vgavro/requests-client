@@ -3,9 +3,6 @@ from setuptools import setup, find_packages
 requires = [
     'requests[socks]>=2.13',
     'python-dateutil>=2.6',
-    # TODO: migrate to >=3.0.0b8
-    # see https://github.com/marshmallow-code/marshmallow/blob/dev/CHANGELOG.rst
-    # for backward incompatible changes
     'marshmallow>=3.0.0b16',
 
     # development
@@ -27,7 +24,7 @@ requires = [
 
 setup(
     name='requests-client',
-    version='0.0.2',
+    version='0.0.3',
     description='http://github.com/vgavro/requests-client',
     long_description='http://github.com/vgavro/requests-client',
     license='BSD',
