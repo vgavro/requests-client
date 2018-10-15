@@ -107,8 +107,7 @@ def maybe_attr_dict(data):
     if isinstance(data, dict):
         return AttrDict({k: maybe_attr_dict(v) for k, v in data.items()})
     elif isinstance(data, (tuple, list, set)):
-        for i, v in enumerate(data):
-            data[i] = maybe_attr_dict(v)
+        return data.__class__(maybe_attr_dict(item) for item in data)
     return data
 
 
