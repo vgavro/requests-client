@@ -1,50 +1,85 @@
 from copy import deepcopy
+from datetime import timezone
 
 from marshmallow import fields
 
-from .utils import datetime_from_utc_timestamp, import_string, resolve_obj_path
-
-
-class NestedField(fields.Nested):
-    """
-    Fix to fallback schema load to schema defaults
-    instead of overriding unknown='raise'.
-    While not merged https://github.com/marshmallow-code/marshmallow/pull/963
-    """
-
-    def __init__(self, nested, **kwargs):
-        kwargs.setdefault('unknown', None)
-        super().__init__(nested, **kwargs)
+from .utils import import_string, resolve_obj_path, from_timestamp, to_timestamp
 
 
 class DateTimeField(fields.DateTime):
+    # TODO: refactor it to be consistent with new marshmallow api or remove if
+    # merge request will be accepted
     """
-    Class extends marshmallow standart DateTime with "timestamp" format.
-    Note that this is very naive implementation, more robust solution
-    now in progress with marshmallow team.
+    While https://github.com/marshmallow-code/marshmallow/pull/1003 is not merged
+    (if it will be merged at all?)
     """
-    # TODO: add ticket url
 
-    DATEFORMAT_SERIALIZATION_FUNCS = \
-        fields.DateTime.DATEFORMAT_SERIALIZATION_FUNCS.copy()
-    DATEFORMAT_DESERIALIZATION_FUNCS = \
-        fields.DateTime.DATEFORMAT_DESERIALIZATION_FUNCS.copy()
+    SERIALIZATION_FUNCS = {
+        **fields.DateTime.SERIALIZATION_FUNCS.copy(),
+        'timestamp': to_timestamp,
+        'timestamp_ms': lambda v, localtime: to_timestamp(v) * 1000
+    }
 
-    DATEFORMAT_SERIALIZATION_FUNCS['timestamp'] = lambda x, localtime=None: x.timestamp()
-    DATEFORMAT_DESERIALIZATION_FUNCS['timestamp'] = datetime_from_utc_timestamp
+    DESERIALIZATION_FUNCS = {
+        **fields.DateTime.DESERIALIZATION_FUNCS.copy(),
+        'timestamp': from_timestamp,
+        'timestamp_ms': lambda v: from_timestamp(float(v) / 1000),
+    }
+
+    def __init__(self, format=None, timezone=None, timezone_naive=False, **kwargs):
+        super().__init__(**kwargs)
+        # Allow format to be None. It may be set later in the ``_serialize``
+        # or ``_deserialize`` methods This allows a Schema to dynamically set the
+        # format, e.g. from a Meta option
+        self.format = format
+        self.timezone = timezone  # TODO: add str conversion if isinstance(timezone, basestring)
+        self.timezone_naive = timezone_naive
+
+    def _serialize(self, value, attr, obj):
+        if value is None:
+            return None
+        if self.timezone:
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=self.timezone)
+            if self.format in ('timestamp', 'timestamp_ms'):
+                # We're replacing to UTC to prevent to_timestamp from utc_offset conversion
+                # in case timezone is not UTC
+                value = value.astimezone(self.timezone).replace(tzinfo=timezone.utc)
+        return super()._serialize(value, attr, obj)
 
     def _deserialize(self, value, attr, data):
-        if self.dateformat == 'timestamp' and value == 0 and self.allow_none:
+        if not value and value != 0:  # Falsy values, e.g. '', None, [] are not valid
+            self.fail('invalid', obj_type=self.OBJ_TYPE)
+        dt = super()._deserialize(value, attr, data)
+
+        if self.timezone and (dt.tzinfo is None or self.format in ('timestamp', 'timestamp_ms')):
+            dt = dt.replace(tzinfo=self.timezone)
+        if self.timezone_naive:
+            if self.timezone and value.tzinfo is not None:
+                return dt.astimezone(self.timezone).replace(tzinfo=None)
+            return dt.replace(tzinfo=None)
+        return dt
+
+
+class TimestampField(DateTimeField):
+    def __init__(self, format='timestamp', **kwargs):
+        if format not in ('timestamp', 'timestamp_ms'):
+            raise ValueError('Unexpected timestamp format: %s' % format)
+        self.zero_as_none = kwargs.pop('zero_as_none', False)
+        super().___init__(format, **kwargs)
+
+    def _serialize(self, value, attr, obj):
+        if self.zero_as_none and value is None:
+            return 0
+        return super()._serialize(value, attr, obj)
+
+    def _deserialize(self, value, attr, data):
+        if self.zero_as_none and value == 0:
             return None
         return super()._deserialize(value, attr, data)
 
-    def _serialize(self, value, attr, obj):
-        if self.dateformat == 'timestamp' and value == 0 and self.allow_none:
-            return None
-        return super()._serialize(value, attr, obj)
 
-
-class SchemedEntityField(NestedField):
+class SchemedEntityField(fields.Nested):
     def __init__(self, entity, **kwargs):
         self.entity = entity
         super().__init__(None, **kwargs)  # Allows lazy model import if entity is string
@@ -64,7 +99,7 @@ class SchemedEntityField(NestedField):
             self.nested.context = getattr(self.parent, 'context', {})
             self.nested.load_only = self._nested_normalized_option('load_only')
             self.nested.dump_only = self._nested_normalized_option('dump_only')
-            self.nested._update_fields(self.many)
+            self.nested.fields = self.nested._init_fields()
         return super().schema
 
     def resolve_entity(self, entity):

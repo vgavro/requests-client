@@ -107,7 +107,7 @@ class SchemedEntityMeta(type):
 
         new_cls._declared_fields = fields
         new_cls.schema.declared_fields = fields
-        new_cls.schema._update_fields()
+        new_cls.schema.fields = new_cls.schema._init_fields()
 
         assert all(f.parent for f in new_cls.schema.fields.values())
 

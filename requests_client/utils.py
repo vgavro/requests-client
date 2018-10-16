@@ -190,8 +190,15 @@ def maybe_decode(string, encoding='utf-8'):
     return isinstance(string, str) and string.decode(encoding) or string
 
 
-def datetime_from_utc_timestamp(timestamp):
-    return datetime.utcfromtimestamp(float(timestamp)).replace(tzinfo=timezone.utc)
+def from_timestamp(timestamp, tzinfo=timezone.utc):
+    return datetime.utcfromtimestamp(float(timestamp)).replace(tzinfo=tzinfo)
+
+
+def to_timestamp(dt, utc_offset=True):
+    """Converts to timestamp, preserves offset if utc_offset=False"""
+    if dt.tzinfo is None or not utc_offset:
+        return dt.replace(tzinfo=timezone.utc).timestamp()
+    return dt.timestamp()
 
 
 def utcnow():
