@@ -100,7 +100,7 @@ class SchemedEntityMeta(type):
         fields.update(new_cls.schema.declared_fields)
         fields = deepcopy(fields)
         for field in fields.values():
-            # For some reason it's not rebinded on _add_to_schema
+            # For some reason it's not rebinded on _bind_to_schema
             # if was already binded before copy
             field.parent = None
             field.name = None

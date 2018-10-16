@@ -66,7 +66,7 @@ class TimestampField(DateTimeField):
         if format not in ('timestamp', 'timestamp_ms'):
             raise ValueError('Unexpected timestamp format: %s' % format)
         self.zero_as_none = kwargs.pop('zero_as_none', False)
-        super().___init__(format, **kwargs)
+        super().__init__(format, **kwargs)
 
     def _serialize(self, value, attr, obj):
         if self.zero_as_none and value is None:
@@ -152,8 +152,8 @@ class BindPropertyField(fields.Field):
             self._get_val = val
         return self._get_rv
 
-    def _add_to_schema(self, field_name, schema):
-        super()._add_to_schema(field_name, schema)
+    def _bind_to_schema(self, field_name, schema):
+        super()._bind_to_schema(field_name, schema)
 
         def getter(instance):
             return self.get(getattr(instance, field_name))
