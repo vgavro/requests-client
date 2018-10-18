@@ -128,7 +128,7 @@ class SchemedEntity(Entity, metaclass=SchemedEntityMeta):
                 kwargs.setdefault(name, field.default)
         super().__init__(**kwargs)
 
-    @property
+    @class_or_instance_property
     def _fields(self):
         return self.schema.fields
 
