@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 requires = [
     'requests[socks]>=2.13',
     'python-dateutil>=2.6',
-    'marshmallow>=3.0.0b17',
+    'marshmallow>=3.0.0b19',
 
     # development
     'ipython',
@@ -24,7 +24,7 @@ requires = [
 
 setup(
     name='requests-client',
-    version='0.0.5',
+    version='0.0.6',
     description='http://github.com/vgavro/requests-client',
     long_description='http://github.com/vgavro/requests-client',
     license='BSD',

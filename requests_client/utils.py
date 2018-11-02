@@ -1,7 +1,9 @@
 import logging
 import json
-from datetime import datetime, date, timezone
-from collections import OrderedDict, Mapping
+from datetime import datetime, date, tzinfo
+from dateutil import tz
+from collections import OrderedDict
+from collections.abc import Mapping
 from enum import Enum
 from importlib import import_module
 
@@ -182,27 +184,46 @@ class SlotsReprMixin(ReprMixin):
         }
 
 
-def maybe_encode(string, encoding='utf-8'):
-    return isinstance(string, bytes) and string or str(string).encode(encoding)
+def ensure_encode(value, encoding='utf-8'):
+    return value if isinstance(value, bytes) else str(value).encode(encoding)
 
 
-def maybe_decode(string, encoding='utf-8'):
-    return isinstance(string, str) and string.decode(encoding) or string
+def ensure_decode(value, encoding='utf-8'):
+    return value if isinstance(value, str) else value.decode(encoding)
 
 
-def from_timestamp(timestamp, tzinfo=timezone.utc):
-    return datetime.utcfromtimestamp(float(timestamp)).replace(tzinfo=tzinfo)
+def get_tz(value, allow_none=False):
+    if isinstance(value, tzinfo):
+        return value
+    elif isinstance(value, str):
+        rv = tz.gettz(value)
+        if rv is not None:
+            return rv
+    elif value is None and allow_none:
+        return None
+    raise ValueError('Unknown timezone', value)
 
 
-def to_timestamp(dt, utc_offset=True):
-    """Converts to timestamp, preserves offset if utc_offset=False"""
-    if dt.tzinfo is None or not utc_offset:
-        return dt.replace(tzinfo=timezone.utc).timestamp()
-    return dt.timestamp()
+def ensure_tz_aware(dt, tz=tz.UTC):
+    return dt.replace(tzinfo=get_tz(tz)) if dt.tzinfo is None else dt
 
 
-def utcnow():
-    return datetime.now(tz=timezone.utc)
+def ensure_tz_naive(dt, tz=tz.UTC):
+    return dt if dt.tzinfo is None else dt.astimezone(get_tz(tz)).replace(tzinfo=None)
+
+
+def from_timestamp(value, tz=tz.UTC, ms=False):
+    return (datetime.utcfromtimestamp((float(value) / 1000) if ms else float(value))
+            .replace(tzinfo=get_tz(tz, allow_none=True)))
+
+
+def to_timestamp(dt, tz=tz.UTC, ms=False):
+    return (ensure_tz_aware(dt, tz).astimezone(tz).replace(tzinfo=tz.UTC).timestamp() *
+            (1000 if ms else 1))
+
+
+def now(tz=tz.UTC):
+    return datetime.utcnow() if tz is None else datetime.now(tz=get_tz(tz))
 
 
 def import_string(import_name):

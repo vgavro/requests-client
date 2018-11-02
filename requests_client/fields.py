@@ -1,82 +1,47 @@
 from copy import deepcopy
-from datetime import timezone
 
 from marshmallow import fields
+from dateutil.tz import UTC
 
-from .utils import import_string, resolve_obj_path, from_timestamp, to_timestamp
+from .utils import import_string, resolve_obj_path, from_timestamp, to_timestamp, get_tz
 
 
-class DateTimeField(fields.DateTime):
-    # TODO: refactor it to be consistent with new marshmallow api or remove if
-    # merge request will be accepted
+class Timestamp(fields.Field):
+    # NOTE: remove this as soon as this will be merged
+    # https://github.com/marshmallow-code/marshmallow/pull/1009
+    """Timestamp field, converts to datetime.
+
+    :param timezone: Timezone of timestamp (defaults to UTC).
+        Timezone-aware datetimes will be converted to this before serialization,
+        timezone-naive datetimes will be serialized as is (in timestamp timezone).
+    :param bool ms: Milliseconds instead of seconds, defaults to `False`. For javascript
+        compatibility.
+    :param bool naive: Should deserialize to timezone-naive or timezone-aware datetime.
+        Defaults to `False`, so all datetimes will be timezone-aware with `timezone`.
+    :param bool as_int: If `True`, timestamp will be serialized to int instead of float,
+        so datetime microseconds precision can be lost. Note that this affects milliseconds also,
+        because 1 millisecond is 1000 microseconds.  Defaults to `False`.
+    :param kwargs: The same keyword arguments that :class:`Field` receives.
     """
-    While https://github.com/marshmallow-code/marshmallow/pull/1003 is not merged
-    (if it will be merged at all?)
-    """
-
-    SERIALIZATION_FUNCS = {
-        **fields.DateTime.SERIALIZATION_FUNCS.copy(),
-        'timestamp': to_timestamp,
-        'timestamp_ms': lambda v, localtime: to_timestamp(v) * 1000
-    }
-
-    DESERIALIZATION_FUNCS = {
-        **fields.DateTime.DESERIALIZATION_FUNCS.copy(),
-        'timestamp': from_timestamp,
-        'timestamp_ms': lambda v: from_timestamp(float(v) / 1000),
-    }
-
-    def __init__(self, format=None, timezone=None, timezone_naive=False, **kwargs):
-        super().__init__(**kwargs)
-        # Allow format to be None. It may be set later in the ``_serialize``
-        # or ``_deserialize`` methods This allows a Schema to dynamically set the
-        # format, e.g. from a Meta option
-        self.format = format
-        self.timezone = timezone  # TODO: add str conversion if isinstance(timezone, basestring)
-        self.timezone_naive = timezone_naive
+    def __init__(self, timezone=UTC, ms=False, naive=False, as_int=False, **kwargs):
+        self.timezone = get_tz(timezone)
+        self.ms = ms
+        self.naive = naive
+        self.as_int = as_int
+        super(Timestamp, self).__init__(**kwargs)
 
     def _serialize(self, value, attr, obj):
         if value is None:
             return None
-        if self.timezone:
-            if value.tzinfo is None:
-                value = value.replace(tzinfo=self.timezone)
-            if self.format in ('timestamp', 'timestamp_ms'):
-                # We're replacing to UTC to prevent to_timestamp from utc_offset conversion
-                # in case timezone is not UTC
-                value = value.astimezone(self.timezone).replace(tzinfo=timezone.utc)
-        return super()._serialize(value, attr, obj)
+        value = to_timestamp(value, self.timezone, self.ms)
+        return int(value) if self.as_int else value
 
     def _deserialize(self, value, attr, data):
-        if not value and value != 0:  # Falsy values, e.g. '', None, [] are not valid
-            self.fail('invalid', obj_type=self.OBJ_TYPE)
-        dt = super()._deserialize(value, attr, data)
-
-        if self.timezone and (dt.tzinfo is None or self.format in ('timestamp', 'timestamp_ms')):
-            dt = dt.replace(tzinfo=self.timezone)
-        if self.timezone_naive:
-            if self.timezone and value.tzinfo is not None:
-                return dt.astimezone(self.timezone).replace(tzinfo=None)
-            return dt.replace(tzinfo=None)
-        return dt
-
-
-class TimestampField(DateTimeField):
-    def __init__(self, format='timestamp', **kwargs):
-        if format not in ('timestamp', 'timestamp_ms'):
-            raise ValueError('Unexpected timestamp format: %s' % format)
-        self.zero_as_none = kwargs.pop('zero_as_none', False)
-        super().__init__(format, **kwargs)
-
-    def _serialize(self, value, attr, obj):
-        if self.zero_as_none and value is None:
-            return 0
-        return super()._serialize(value, attr, obj)
-
-    def _deserialize(self, value, attr, data):
-        if self.zero_as_none and value == 0:
-            return None
-        return super()._deserialize(value, attr, data)
+        try:
+            return from_timestamp(value, None if self.naive else self.timezone, self.ms)
+        except (ValueError, OverflowError, OSError):
+            # Timestamp exceeds limits, ValueError needed for Python < 3.3
+            self.fail('invalid')
 
 
 class SchemedEntityField(fields.Nested):

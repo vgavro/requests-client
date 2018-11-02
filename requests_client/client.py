@@ -8,7 +8,7 @@ import colorama
 
 from .config import CreateFromConfigMixin
 from .storage import FileStorage
-from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, utcnow, pprint, missing
+from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, now, pprint, missing
 from .schemas import maybe_create_response_schema
 from . import exceptions
 from .exceptions import Retry, ClientError, RatelimitError, TemporaryError, AuthRequired
@@ -22,7 +22,8 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-JSON_CONTENT_TYPES = ['text/json', 'application/json', 'application/hal+json']
+JSON_CONTENT_TYPES = ['text/json', 'application/json', 'application/hal+json',
+                      'application/problem+json']  # TODO: add regexp
 
 
 def check_http_status(status, expected):
@@ -73,7 +74,7 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
     session_cls = Session
     timeout = 30  # http://docs.python-requests.org/en/master/user/quickstart/#timeouts
     request_wait_seconds = 0  # minimum delay between old *sent* time between sending new request
-    request_wait_with_response_time = False
+    request_wait_since_response = False  # note - this also changes last_call_time behaviour
     request_warn_elapsed_seconds = 5  # warn if request took more than "x" seconds
     ratelimit_retries = 0  # retry of same request before exception. 0 is "no retry"
     ratelimit_wait_seconds = 0  # sleep before next retry
@@ -89,7 +90,7 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
 
     def __init__(self, auth_ident=None, debug_level=None,
                  session={}, load_state=True, logger=None, timeout=True,
-                 request_wait_seconds=None, request_wait_with_response_time=None,
+                 request_wait_seconds=None, request_wait_since_response=None,
                  request_warn_elapsed_seconds=None,
                  ratelimit_retries=None, ratelimit_wait_seconds=None,
                  temporary_error_retries=None, temporary_error_wait_seconds=None,
@@ -101,10 +102,6 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
             self.auth_ident = auth_ident
         self.debug_level = int(debug_level) if debug_level is not None else self.debug_level
         self.session = isinstance(session, dict) and self.session_cls(**session) or session
-
-        # NOTE - it's not best decision to rely on username for logging,
-        # but it's more obvious than account_id for now.
-        # Maybe it would be changed using project-wide new logging architecture
         self.logger = logger or EntityLoggerAdapter(globals()['logger'],
                                                     self.auth_name or self.auth_ident)
         if self.debug_level >= 4:
@@ -113,16 +110,20 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
             self.logger.debug('Initialized <%s(%s) at %s>', self.__class__.__name__,
                               params, hex(id(self)))
         self.timeout = self.timeout if timeout is True else timeout
-        self.request_wait_seconds = request_wait_seconds or self.request_wait_seconds
-        self.request_wait_with_response_time = (request_wait_with_response_time or
-                                                self.request_wait_with_response_time)
-        self.request_warn_elapsed_seconds = (request_warn_elapsed_seconds or
-                                             self.request_warn_elapsed_seconds)
-        self.ratelimit_retries = ratelimit_retries or self.ratelimit_retries
-        self.ratelimit_wait_seconds = ratelimit_wait_seconds or self.ratelimit_wait_seconds
-        self.temporary_error_retries = temporary_error_retries or self.temporary_error_retries
-        self.temporary_error_wait_seconds = (temporary_error_wait_seconds or
-                                             self.temporary_error_wait_seconds)
+        if request_wait_seconds is not None:
+            self.request_wait_seconds = request_wait_seconds
+        if request_wait_since_response is not None:
+            self.request_wait_since_response = request_wait_since_response
+        if request_warn_elapsed_seconds is not None:
+            self.request_warn_elapsed_seconds = request_warn_elapsed_seconds
+        if ratelimit_retries is not None:
+            self.ratelimit_retries = ratelimit_retries
+        if ratelimit_wait_seconds is not None:
+            self.ratelimit_wait_seconds = ratelimit_wait_seconds
+        if temporary_error_retries is not None:
+            self.temporary_error_retries = temporary_error_retries
+        if temporary_error_wait_seconds is not None:
+            self.temporary_error_wait_seconds = temporary_error_wait_seconds
 
         self.storage_cls = storage_cls or self.storage_cls
         self.storage_uri = storage_uri or self.storage_uri
@@ -323,16 +324,20 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
         checking status, parsing json, running error_processors
         (for exception raise to be processed in self.request),
         """
-        now = utcnow()
+        call_time = now()
         if self.last_call_time:
             if self.request_wait_seconds:
-                delta = (now - self.last_call_time).total_seconds()
+                delta = (call_time - self.last_call_time).total_seconds()
                 if delta < self.request_wait_seconds:
                     self.sleep(self.request_wait_seconds - delta,
                                log_reason='request wait')
+                    self.last_call_time = now()
+                else:
+                    self.last_call_time = call_time
+            else:
+                self.last_call_time = call_time
         else:
-            self.first_call_time = now
-        self.last_call_time = utcnow()
+            self.first_call_time = self.last_call_time = call_time
 
         if not urlparse(url).scheme and self.base_url:
             url = urljoin(self.base_url, url)
@@ -361,8 +366,8 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
             self.error_processor(exc, error_processors)
             raise
         finally:
-            if self.request_wait_with_response_time:
-                self.last_call_time = utcnow()
+            if self.request_wait_since_response:
+                self.last_call_time = now()
 
         if self.debug_level >= 5:
             self.logger.debug(
