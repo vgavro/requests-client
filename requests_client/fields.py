@@ -23,11 +23,13 @@ class Timestamp(fields.Field):
         because 1 millisecond is 1000 microseconds.  Defaults to `False`.
     :param kwargs: The same keyword arguments that :class:`Field` receives.
     """
-    def __init__(self, timezone=UTC, ms=False, naive=False, as_int=False, **kwargs):
+    def __init__(self, timezone=UTC, ms=False, naive=False, as_int=False, zero_as_none=False,
+                 **kwargs):
         self.timezone = get_tz(timezone)
         self.ms = ms
         self.naive = naive
         self.as_int = as_int
+        self.zero_as_none = zero_as_none
         super(Timestamp, self).__init__(**kwargs)
 
     def _serialize(self, value, attr, obj):
@@ -37,6 +39,8 @@ class Timestamp(fields.Field):
         return int(value) if self.as_int else value
 
     def _deserialize(self, value, attr, data):
+        if self.zero_as_none and value == 0:
+            return None
         try:
             return from_timestamp(value, None if self.naive else self.timezone, self.ms)
         except (ValueError, OverflowError, OSError):
