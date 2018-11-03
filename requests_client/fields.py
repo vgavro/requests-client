@@ -6,7 +6,7 @@ from dateutil.tz import UTC
 from .utils import import_string, resolve_obj_path, from_timestamp, to_timestamp, get_tz
 
 
-class Timestamp(fields.Field):
+class TimestampField(fields.Field):
     # NOTE: remove this as soon as this will be merged
     # https://github.com/marshmallow-code/marshmallow/pull/1009
     """Timestamp field, converts to datetime.
@@ -30,7 +30,7 @@ class Timestamp(fields.Field):
         self.naive = naive
         self.as_int = as_int
         self.zero_as_none = zero_as_none
-        super(Timestamp, self).__init__(**kwargs)
+        super(TimestampField, self).__init__(**kwargs)
 
     def _serialize(self, value, attr, obj):
         if value is None:
