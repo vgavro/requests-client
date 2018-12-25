@@ -24,7 +24,7 @@ requires = [
 
 setup(
     name='requests-client',
-    version='0.0.7',
+    version='0.0.8',
     description='http://github.com/vgavro/requests-client',
     long_description='http://github.com/vgavro/requests-client',
     license='BSD',
