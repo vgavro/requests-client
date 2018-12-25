@@ -104,6 +104,8 @@ class AttrDict(dict):
     def __setstate__(self, dict_):
         self.update(dict_)
 
+    resolve_path = resolve_obj_path
+
 
 def maybe_attr_dict(data):
     if isinstance(data, dict):

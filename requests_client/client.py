@@ -1,6 +1,7 @@
 import logging
 from functools import wraps
 from urllib.parse import urlparse, urljoin
+from json import JSONDecodeError as _JSONDecodeError
 
 from requests import Session, Response
 from marshmallow import ValidationError
@@ -12,6 +13,7 @@ from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, now, 
 from .schemas import maybe_create_response_schema
 from . import exceptions
 from .exceptions import Retry, ClientError, RatelimitError, TemporaryError, AuthRequired
+
 
 try:
     from gevent import sleep
@@ -398,8 +400,8 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
 
         try:
             self.set_response_json_data(response, parse_json, raise_=True)
-        except Exception as exc:
-            exc = self.ClientError(response, 'JSON error: {}'.format(repr(exc)), exc)
+        except _JSONDecodeError as exc:
+            exc = self.JSONDecodeError(response, exc)
             self.error_processor(exc, error_processors)
             raise exc
 

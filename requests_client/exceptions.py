@@ -1,5 +1,11 @@
-from .utils import resolve_obj_path, repr_response
+from json import JSONDecodeError as _JSONDecodeError
+
 from requests import Response
+
+from .utils import resolve_obj_path, repr_response
+
+
+# TODO: implement __reduce__ for proper exception serialization and drop this *args compatibility
 
 
 class Retry(Exception):
@@ -24,7 +30,7 @@ class ClientError(Exception):
         self.resp = resp
         if msg:
             self.msg = msg
-        super().__init__(resp, msg, *args, **kwargs)
+        Exception.__init__(self, resp, msg, *args, **kwargs)
 
     @property
     def response(self):
@@ -57,6 +63,9 @@ class ClientError(Exception):
                 return resolve_obj_path(self.data, path)
             except Exception:
                 pass
+
+    def __reduce__(self):
+        return self.__class__, self.args
 
 
 class RetryExceeded(ClientError):
@@ -95,6 +104,32 @@ class HTTPError(ClientError):
         msg = '{} {} (!={})'.format(self.resp.status_code, self.resp.reason,
                                     self.expected_status)
         return self.msg and '{}: {}'.format(msg, self.msg) or msg
+
+
+class DecodeError(ClientError):
+    def __init__(self, resp, exc):
+        self.exc = exc
+        super().__init__(resp, None, exc)
+
+    def get_message(self, full=False):
+        return repr(self.exc)
+
+    def __reduce__(self):
+        return self.__class__, (self.resp, self.exc)
+
+
+class JSONDecodeError(DecodeError, _JSONDecodeError):
+    def __init__(self, resp, exc):
+        assert isinstance(exc, _JSONDecodeError)
+        _JSONDecodeError.__init__(self, exc.msg, exc.doc, exc.pos)
+        # exc.args[0] is errmsg created in JSONDecodeError.__init__
+        DecodeError.__init__(self, resp, exc)
+
+    def get_message(self, full=False):
+        return self.exc.args[0]
+
+    def __reduce__(self):
+        return self.__class__, (self.resp, self.exc)
 
 
 class TemporaryError(ClientError):
@@ -153,7 +188,7 @@ class ResponseValidationError(ClientError):
     def __init__(self, response, msg=None, schema=None, errors=None):
         self.schema = schema
         self.errors = errors
-        super().__init__(response, msg)
+        super().__init__(response, msg, schema, errors)
 
     def get_message(self, full=False):
         errors = str(self.errors)
