@@ -57,12 +57,10 @@ class ClientError(Exception):
             return getattr(self.resp, 'data', None)
         return None
 
-    def get_data(self, path):
+    def get_data(self, path, default=None):
         if self.data:
-            try:
-                return resolve_obj_path(self.data, path)
-            except Exception:
-                pass
+            return resolve_obj_path(self.data, path, default)
+        return default
 
     def __reduce__(self):
         return self.__class__, self.args
