@@ -33,7 +33,10 @@ DEFAULT_SLOTS = ['_entity', '_meta']
 class Entity(ReprMixin):
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
-            setattr(self, k, v)
+            try:
+                setattr(self, k, v)
+            except AttributeError:
+                raise AttributeError('Unknown attribute %s on %s' % (k, self.__class__))
 
     def __contains__(self, key):
         return hasattr(self, key)
