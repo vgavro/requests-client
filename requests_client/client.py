@@ -77,7 +77,7 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
     timeout = 30  # http://docs.python-requests.org/en/master/user/quickstart/#timeouts
     request_wait_seconds = 0  # minimum delay between old *sent* time between sending new request
     request_wait_since_response = False  # note - this also changes last_call_time behaviour
-    request_warn_elapsed_seconds = 5  # warn if request took more than "x" seconds
+    request_warn_elapsed_seconds = 10  # warn if request took more than "x" seconds
     ratelimit_retries = 0  # retry of same request before exception. 0 is "no retry"
     ratelimit_wait_seconds = 0  # sleep before next retry
     temporary_error_retries = 1  # retry of same request before exception. 0 is "no retry"
@@ -384,10 +384,10 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
 
         elapsed_seconds = response.elapsed.total_seconds()
         if elapsed_seconds > self.request_warn_elapsed_seconds:
-            self.logger.warn('Request %s %s took %s seconds after calls(%s/%s) since(%s)',
-                             response.request.method, response.request.url,
-                             elapsed_seconds, self.calls_count, self.calls_elapsed_seconds,
-                             self.first_call_time)
+            self.logger.warning('Request %s %s took %s seconds after calls(%s/%s) since(%s)',
+                                response.request.method, response.request.url,
+                                elapsed_seconds, self.calls_count, self.calls_elapsed_seconds,
+                                self.first_call_time)
         self.calls_elapsed_seconds += elapsed_seconds
         self.calls_count += 1
         self.last_response = response  # NOTE: only for debug purposes!
