@@ -319,7 +319,7 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
 
     def _send_request(self, method, url, params=None, data=None, headers=None, json=None,
                       http_status=2, parse_json=False, error_processors=[],
-                      allow_redirects=None):
+                      allow_redirects=None, cookies=None, stream=False):
         """
         Real request sending. Sleeping some time if need,
         setting calls first/last time and count, measuring request time,
@@ -359,7 +359,7 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
         try:
             kwargs = dict(params=params, data=data, json=json, headers=headers,
                           allow_redirects=allow_redirects, proxies=self.proxy,
-                          verify=self.ssl_verify)
+                          verify=self.ssl_verify, cookies=cookies, stream=stream)
             if self.timeout is not None:
                 # Allow session (ConfigurableSession for example) to handle timeout
                 kwargs['timeout'] = self.timeout
@@ -379,7 +379,7 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
                 '\n' + _color_em('RESPONSE HEADERS:', back=colorama.Back.GREEN) + '\n' +
                 pprint(response.headers, print_=False) +
                 '\n' + _color_em('RESPONSE BODY:', back=colorama.Back.GREEN) + '\n' +
-                pprint(response.text, print_=False)
+                (stream and '<stream>' or pprint(response.text, print_=False))
             )
 
         elapsed_seconds = response.elapsed.total_seconds()
