@@ -60,7 +60,7 @@ def resolve_obj_key(obj, key, default=NO_DEFAULT):
         except Exception:
             try:
                 return obj[key]
-            except Exception as exc:
+            except Exception:
                 if default is not NO_DEFAULT:
                     return default
                 raise ValueError('Could not resolve "{}" on {} object: {}'.format(key, obj))
@@ -70,7 +70,7 @@ def resolve_obj_key(obj, key, default=NO_DEFAULT):
         except Exception:
             try:
                 return getattr(obj, key)
-            except Exception as exc:
+            except Exception:
                 if default is not NO_DEFAULT:
                     return default
                 raise ValueError('Could not resolve "{}" on {} object'.format(key, obj))
@@ -155,7 +155,7 @@ def repr_response(resp, full=False):
 
 
 def repr_str_short(value, length=32):
-    if len(value) > length:
+    if length is not None and len(value) > length:
         return value[:length] + '...'
     return value
 

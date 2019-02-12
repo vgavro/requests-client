@@ -1,4 +1,7 @@
+from requests.models import Response
 from lxml import html, etree
+
+from .utils import repr_str_short
 
 # TODO: xml support (not only html), FindError on attrib lookup
 
@@ -6,16 +9,19 @@ from lxml import html, etree
 class FindError(ValueError):
     def __init__(self, msg, element, expr=None):
         self.msg = msg
+        if isinstance(element, DataParser):
+            element = element.root
         self.element = element
         self.expr = expr
         super().__init__(msg, element)
 
-    def __str__(self):
+    def __str__(self, repr_element_length=1024):
         return '%s\n%s' % (
-            (self.expr and '%s expr=%s' % (self.msg, self.expr) or self.msg),
+            (self.expr and ('%s expr=%s' % (self.msg, self.expr)) or self.msg),
             # TODO: this will produce too much noise, so add full=False
             # and shorten element representation
-            etree.tostring(self.element, pretty_print=True).decode()
+            repr_str_short(etree.tostring(self.element, pretty_print=True).decode(),
+                           repr_element_length)
         )
 
 
@@ -95,3 +101,19 @@ def html_from_string(string, **kwargs):
 
 html_parser = HTMLParser()
 xhtml_parser = XHTMLParser()
+
+
+class DataParser:
+    def __init__(self, root):
+        if isinstance(root, str):
+            root = html_from_string(root)
+        elif isinstance(root, Response):
+            root = html_from_response(root)
+        elif not isinstance(root, etree.ElementBase):
+            raise ValueError('Unexpected type: %s' % type(root))
+        self.root = root
+
+    def __getattr__(self, name):
+        return getattr(self.root, name)
+
+    __call__ = NotImplemented
