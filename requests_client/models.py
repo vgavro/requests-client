@@ -33,10 +33,22 @@ DEFAULT_SLOTS = ['_entity', '_meta']
 class Entity(ReprMixin):
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
-            try:
-                setattr(self, k, v)
-            except AttributeError:
-                raise AttributeError('Unknown attribute %s on %s' % (k, self.__class__))
+            if hasattr(self, '__slots__') and k not in self.__slots__:
+                raise AttributeError('Unknown attribute "%s" on %s' % (k, self.__class__))
+            setattr(self, k, v)
+
+        # TODO: Consider code above as hotfix.
+        # Code below will not work because of tricky __slots__ inheritance.
+        # If some parent class has no __slots__, instance will always
+        # have __dict__ attribute. What we need is split SlottedEntity
+        # and regular Entity, also remove DEFAULT_SLOTS (as it actually can be inherited),
+        # and populate _fields not from self.__slots__, but also from slotted parents.
+
+        # for k, v in kwargs.items():
+        #     try:
+        #         setattr(self, k, v)
+        #     except AttributeError:
+        #         raise AttributeError('Unknown attribute %s on %s' % (k, self.__class__))
 
     def __contains__(self, key):
         return hasattr(self, key)
