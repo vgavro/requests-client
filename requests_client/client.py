@@ -12,7 +12,8 @@ from .storage import FileStorage
 from .utils import EntityLoggerAdapter, resolve_obj_path, maybe_attr_dict, now, pprint, missing
 from .schemas import maybe_create_response_schema
 from . import exceptions
-from .exceptions import Retry, ClientError, RatelimitError, TemporaryError, AuthRequired
+from .exceptions import (Retry, ClientError, RatelimitError, TemporaryError, AuthRequired,
+                         ResponseValidationError)
 
 
 try:
@@ -432,11 +433,10 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
                 if raise_:
                     raise
 
-    def apply_response_schema(self, resp, schema, inherit=None, data_attr='data',
-                              data_path=None, target_attr='data', **kwargs):
+    def load_response_schema(self, resp, schema, inherit=None, data_attr='data',
+                             data_path=None, **kwargs):
         data = getattr(resp, data_attr)
         data_path = data_path or getattr(schema, 'data_path', None)
-
         if data_path:
             try:
                 data = resolve_obj_path(data, data_path)
@@ -448,12 +448,20 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
         schema.context['debug_level'] = self.debug_level
         schema.context['logger'] = self.logger
         schema.context['response'] = resp
-
         try:
-            setattr(resp, target_attr, schema.load(data, **kwargs))
+            return schema.load(data, **kwargs)
         except ValidationError as exc:
-            setattr(resp, '{}_errors'.format(target_attr), exc.messages)
-            raise self.ResponseValidationError(resp, schema=schema, errors=exc.messages)
+            raise self.ResponseValidationError(
+                resp, schema=schema, errors=exc.normalized_messages())
+
+    def apply_response_schema(self, resp, *args, target_attr='data', **kwargs):
+        try:
+            data = self.load_response_schema(resp, *args, **kwargs)
+        except ResponseValidationError as exc:
+            setattr(resp, '{}_errors'.format(target_attr), exc.errors)
+            raise
+        else:
+            setattr(resp, target_attr, data)
 
     @classmethod
     def storage_factory(cls, prefix, storage_cls=None, storage_uri=None):

@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 requires = [
     'requests[socks]>=2.13',
     'python-dateutil>=2.7',
-    'marshmallow==3.0.0rc1',
+    'marshmallow>=3.0.0rc1',
 
     # development
     'ipython',
