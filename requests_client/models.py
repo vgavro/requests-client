@@ -87,8 +87,8 @@ class Entity(ReprMixin):
         return {
             k: _maybe_to_dict(getattr(self, k))
             for k in (args or self._fields or self.__dict__.keys())
-            if (not k.startswith('_') and k not in exclude and
-                (args and required or getattr(self, k, missing) != missing))
+            if (not k.startswith('_') and k not in exclude
+                and (args and required or getattr(self, k, missing) != missing))
         }
 
 

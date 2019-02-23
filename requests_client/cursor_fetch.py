@@ -25,10 +25,10 @@ class CursorFetchIterator:
         else:
             self._iterable = list(initial)
         self.max_count = (max_count is None) and float('inf') or max_count
-        self.max_count_to_stop_fetch = ((max_count_to_stop_fetch is None) and
-                                        float('inf') or max_count_to_stop_fetch)
-        self.max_fetch_count = ((max_fetch_count is None) and float('inf') or
-                                max_fetch_count)
+        self.max_count_to_stop_fetch = ((max_count_to_stop_fetch is None)
+                                        and float('inf') or max_count_to_stop_fetch)
+        self.max_fetch_count = ((max_fetch_count is None) and float('inf')
+                                or max_fetch_count)
 
         self.fetch_wait_seconds = fetch_wait_seconds
         self.empty_fetch_retries = empty_fetch_retries
@@ -58,8 +58,8 @@ class CursorFetchIterator:
         raise NotImplementedError()
 
     def _fetch_next(self):
-        if (self.max_fetch_count == 0 or self._stop_on_next_fetch or
-           self.has_more is False):
+        if (self.max_fetch_count == 0 or self._stop_on_next_fetch
+           or self.has_more is False):
             raise StopIteration()
 
         if self.fetch_count and self.fetch_wait_seconds:
@@ -89,8 +89,8 @@ class CursorFetchIterator:
         if self.count >= self.max_count:
             raise StopIteration()
         self.count += 1
-        if (self.count == self.max_count or
-                self.count >= self.max_count_to_stop_fetch):
+        if (self.count == self.max_count
+           or self.count >= self.max_count_to_stop_fetch):
             self._stop_on_next_fetch = True
         return self._iterable.pop()
 

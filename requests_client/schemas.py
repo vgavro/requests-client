@@ -19,10 +19,8 @@ def __obj_fields_iterator(obj):
 
 
 def get_declared_fields(cls, base=FieldABC):
-    return (
-        _get_fields(dict(__obj_fields_iterator(cls)), base) +
-        _get_fields_by_mro(cls, base)
-    )
+    return (_get_fields(dict(__obj_fields_iterator(cls)), base)
+            + _get_fields_by_mro(cls, base))
 
 
 class ResponseSchema(ma.Schema):

@@ -278,10 +278,10 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
                                         exc.retry_ident)
                     if exc.wait_seconds:
                         self.sleep(exc.wait_seconds,
-                            log_reason='retry request: {}'.format(exc.retry_ident))
+                                   log_reason='retry request: {}'.format(exc.retry_ident))
                 else:
-                    raise self.RetryExceeded(exc.result,
-                        retry_ident=exc.retry_ident, retry_count=exc.retry_count)
+                    raise self.RetryExceeded(
+                        exc.result, retry_ident=exc.retry_ident, retry_count=exc.retry_count)
 
             except RatelimitError as exc:
                 ratelimit_retries += 1
@@ -289,8 +289,8 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
                     self.logger.warning('Retry(%s) after calls(%s/%s) since(%s) on error: %r',
                                         ratelimit_retries, self.calls_count,
                                         self.calls_elapsed_seconds, self.first_call_time, exc)
-                    self.sleep(exc.wait_seconds is not None and exc.wait_seconds or
-                               self.ratelimit_wait_seconds,
+                    self.sleep(exc.wait_seconds is not None and exc.wait_seconds
+                               or self.ratelimit_wait_seconds,
                                log_reason='ratelimit wait')
                 else:
                     if ratelimit_retries - 1:
@@ -303,8 +303,8 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
                     self.logger.debug('Retry(%s) after calls(%s/%s) since(%s) on error: %r',
                                       temporary_error_retries, self.calls_count,
                                       self.calls_elapsed_seconds, self.first_call_time, exc)
-                    self.sleep(exc.wait_seconds is not None and exc.wait_seconds or
-                               self.temporary_error_wait_seconds,
+                    self.sleep(exc.wait_seconds is not None and exc.wait_seconds
+                               or self.temporary_error_wait_seconds,
                                log_reason='temporary error wait')
                 else:
                     if temporary_error_retries - 1:
@@ -350,11 +350,11 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
 
         if self.debug_level >= 5:
             self.logger.debug(
-                _color_em('REQUEST %s' % method) + ' ' + url + (' params=%s' % params) +
-                '\n' + _color_em('REQUEST HEADERS:', back=colorama.Back.BLUE) + '\n' +
-                pprint(headers, print_=False) +
-                (('\n' + _color_em('REQUEST BODY:', back=colorama.Back.BLUE) + '\n' +
-                pprint(data or json, print_=False)) if (data or json) else '')
+                _color_em('REQUEST %s' % method) + ' ' + url + (' params=%s' % params)
+                + '\n' + _color_em('REQUEST HEADERS:', back=colorama.Back.BLUE) + '\n'
+                + pprint(headers, print_=False)
+                + (('\n' + _color_em('REQUEST BODY:', back=colorama.Back.BLUE) + '\n'
+                   + pprint(data or json, print_=False)) if (data or json) else '')
             )
 
         try:
@@ -374,13 +374,13 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
 
         if self.debug_level >= 5:
             self.logger.debug(
-                _color_em('RESPONSE %s' % response.request.method, back=colorama.Back.GREEN) +
-                colorama.Style.RESET_ALL + colorama.Style.BRIGHT + (' %s ' % response.status_code) +
-                colorama.Style.RESET_ALL + response.url +
-                '\n' + _color_em('RESPONSE HEADERS:', back=colorama.Back.GREEN) + '\n' +
-                pprint(response.headers, print_=False) +
-                '\n' + _color_em('RESPONSE BODY:', back=colorama.Back.GREEN) + '\n' +
-                (stream and '<stream>' or pprint(response.text, print_=False))
+                _color_em('RESPONSE %s' % response.request.method, back=colorama.Back.GREEN)
+                + colorama.Style.RESET_ALL + colorama.Style.BRIGHT + (' %s ' % response.status_code)
+                + colorama.Style.RESET_ALL + response.url
+                + '\n' + _color_em('RESPONSE HEADERS:', back=colorama.Back.GREEN) + '\n'
+                + pprint(response.headers, print_=False)
+                + '\n' + _color_em('RESPONSE BODY:', back=colorama.Back.GREEN) + '\n'
+                + (stream and '<stream>' or pprint(response.text, print_=False))
             )
 
         elapsed_seconds = response.elapsed.total_seconds()
@@ -416,8 +416,8 @@ class BaseClient(CreateFromConfigMixin, metaclass=BaseClientMeta):
 
     def set_response_json_data(self, resp, data_path=None, data_attr='data', raise_=False):
         if (
-            data_path or
-            resp.headers.get('Content-Type', '').lower().split(';')[0] in JSON_CONTENT_TYPES
+            data_path
+            or resp.headers.get('Content-Type', '').lower().split(';')[0] in JSON_CONTENT_TYPES
         ):
             try:
                 data = maybe_attr_dict(resp.json())

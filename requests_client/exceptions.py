@@ -88,7 +88,7 @@ class RetryExceeded(ClientError):
         super().__init__(resp, msg, retry_ident, retry_count)
 
     def get_message(self, full=False):
-        msg ='Retries({}) on "{}" exceeded'.format(self.retry_count, self.reason)
+        msg = 'Retries({}) on "{}" exceeded'.format(self.retry_count, self.reason)
         return self.msg and '{}: {}'.format(msg, self.msg) or msg
 
 

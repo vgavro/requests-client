@@ -172,8 +172,8 @@ class ReprMixin:
     def to_dict(self, *args, exclude=[], required=True):
         return {
             k: self.__dict__[k] for k in (args or self.__dict__.keys())
-            if (not k.startswith('_') and k not in exclude and
-                (args and required or k in self.__dict__))
+            if (not k.startswith('_') and k not in exclude
+                and (args and required or k in self.__dict__))
         }
 
 
@@ -181,8 +181,8 @@ class SlotsReprMixin(ReprMixin):
     def to_dict(self, *args, exclude=[], required=True):
         return {
             k: getattr(self, k) for k in (args or self.__slots__)
-            if (not k.startswith('_') and k not in exclude and
-                (args and required or hasattr(self, k)))
+            if (not k.startswith('_') and k not in exclude
+                and (args and required or hasattr(self, k)))
         }
 
 
@@ -220,8 +220,8 @@ def from_timestamp(value, tz=tz.UTC, ms=False):
 
 
 def to_timestamp(dt, tz=tz.UTC, ms=False):
-    return (ensure_tz_aware(dt, tz).astimezone(tz).replace(tzinfo=tz.UTC).timestamp() *
-            (1000 if ms else 1))
+    return (ensure_tz_aware(dt, tz).astimezone(tz).replace(tzinfo=tz.UTC).timestamp()
+            * (1000 if ms else 1))
 
 
 def now(tz=tz.UTC):
