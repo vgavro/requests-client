@@ -40,7 +40,7 @@ class ResponseSchema(ma.Schema):
         super().__init__(**kwargs)
 
     @ma.pre_load()
-    def __pre_load(self, data):
+    def __pre_load(self, data, **kwargs):
         if getattr(self.Meta, 'pdb', False):
             data = maybe_attr_dict(data)
             if callable(self.Meta.pdb):
@@ -61,7 +61,7 @@ class ResponseSchema(ma.Schema):
         return rv
 
     @ma.post_load(pass_many=True, pass_original=True)
-    def __post_load(self, data, many, original_data):
+    def __post_load(self, data, many, original_data, **kwargs):
         if hasattr(self.Meta, 'model'):
             if self.context['debug_level'] >= 5:
                 if many:
@@ -92,7 +92,7 @@ class LoadKeySchemaMixin:
     Consider this as bringing back "load_from" parameter, removed since 3.0.0b8
     """
     @ma.pre_load(pass_many=True)
-    def __pre_load(self, data, many):
+    def __pre_load(self, data, many, **kwargs):
         pairs = tuple(
             (field.metadata['load_key'], field.data_key or field_name)
             for field_name, field in self.fields.items() if 'load_key' in field.metadata
@@ -107,7 +107,7 @@ class DumpKeySchemaMixin:
     Consider this as bringing back "dump_to" parameter, removed since 3.0.0b8
     """
     @ma.post_dump(pass_many=True)
-    def __post_dump(self, data, many):
+    def __post_dump(self, data, many, **kwargs):
         pairs = tuple(
             (field.data_key or field_name, field.metadata['dump_key'])
             for field_name, field in self.fields.items() if 'dump_key' in field.metadata
